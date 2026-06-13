@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0b1220;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+#__next,
+body > div {
+  height: 100%;
+}
+
+/* Leaflet container harus punya tinggi eksplisit */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: #0b1220;
+  font-family: inherit;
+}
+
+/* Label kota (permanent tooltip) — dibikin clean tanpa box default Leaflet */
+.leaflet-tooltip.place-label {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 11px;
+  text-shadow:
+    0 0 3px #fff,
+    0 0 3px #fff,
+    0 0 4px #fff;
+  padding: 0;
+}
+.leaflet-tooltip.place-label::before {
+  display: none;
+}
