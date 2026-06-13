@@ -35,16 +35,27 @@ export const MAX_BOUNDS: [[number, number], [number, number]] = RADAR_BOUNDS;
 export const MIN_ZOOM = 7;
 export const MAX_ZOOM = 12; // dikunci: lebih dari ini radar (1 km/px) mulai pecah
 
-// 3 preset view — zoom dipas-in biar pola hujan selalu kebaca.
+// 3 preset view — pakai bounding box wilayah asli (bukan center/zoom tebakan).
+// bounds = [[south, west], [north, east]].
+//  - batam: Pulau Batam (Sekupang–Nongsa–Nagoya–pesisir selatan)
+//  - regional: cakupan radar regional (Singapura–Johor–Riau)
+//  - kepri: klaster Kepri ber-radar (Karimun–Batam–Bintan/Tg.Pinang–Lingga)
 export const VIEWS: Record<
   ViewKey,
-  { label: string; sub: string; center: [number, number]; zoom: number }
+  { label: string; sub: string; bounds: [[number, number], [number, number]] }
 > = {
-  batam: { label: "Kota Batam", sub: "fokus", center: [1.08, 104.02], zoom: 11 },
-  regional: { label: "Regional", sub: "240 km", center: [1.3, 103.92], zoom: 8 },
-  kepri: { label: "Kepri", sub: "provinsi", center: [0.45, 104.05], zoom: 8 },
+  batam: { label: "Kota Batam", sub: "fokus", bounds: [[0.98, 103.9], [1.19, 104.16]] },
+  regional: { label: "Regional", sub: "240 km", bounds: [[-0.4, 102.4], [2.7, 105.3]] },
+  kepri: { label: "Kepri", sub: "provinsi", bounds: [[0.1, 103.25], [1.28, 104.75]] },
 };
 export const DEFAULT_VIEW: ViewKey = "batam";
+
+// Sisihkan ruang buat chrome saat fit: atas = topbar, bawah = panel kontrol.
+// Format Leaflet Point [x, y] (px).
+export const VIEW_PADDING = {
+  paddingTopLeft: [12, 76] as [number, number],
+  paddingBottomRight: [12, 240] as [number, number],
+};
 
 // Basemap per tema (CARTO).
 export const TILES: Record<ThemeMode, string> = {

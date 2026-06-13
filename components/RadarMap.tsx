@@ -19,6 +19,7 @@ import {
   RADAR_BOUNDS,
   TILES,
   VIEWS,
+  VIEW_PADDING,
   timeBasedTheme,
   type Frame,
   type ThemeMode,
@@ -35,11 +36,10 @@ function ViewController({ view }: { view: ViewKey }) {
   const first = useRef(true);
   useEffect(() => {
     if (first.current) {
-      first.current = false; // posisi awal udah diset MapContainer
+      first.current = false; // posisi awal udah diset MapContainer (bounds + padding)
       return;
     }
-    const v = VIEWS[view];
-    map.flyTo(v.center, v.zoom, { duration: 0.8 });
+    map.flyToBounds(VIEWS[view].bounds, { ...VIEW_PADDING, duration: 0.8 });
   }, [view, map]);
   return null;
 }
@@ -140,8 +140,8 @@ export default function RadarMap() {
   return (
     <div data-theme={theme} style={{ position: "absolute", inset: 0 }}>
       <MapContainer
-        center={VIEWS[DEFAULT_VIEW].center}
-        zoom={VIEWS[DEFAULT_VIEW].zoom}
+        bounds={VIEWS[DEFAULT_VIEW].bounds}
+        boundsOptions={VIEW_PADDING}
         minZoom={MIN_ZOOM}
         maxZoom={MAX_ZOOM}
         maxBounds={MAX_BOUNDS}
