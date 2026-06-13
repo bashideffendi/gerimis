@@ -75,6 +75,7 @@ type Conditions = {
   aq: { psi: number; pm25: number | null; label: string; color: string } | null;
   wind: { speed: number; deg: number; label: string; station?: string } | null;
   rain: { mm: number; station: string } | null;
+  uv: { value: number; label: string; color: string } | null;
 };
 
 export default function RadarMap() {
@@ -270,7 +271,8 @@ export default function RadarMap() {
           </div>
         </div>
 
-        {conditions && (conditions.aq || conditions.wind || conditions.rain) && (
+        {conditions &&
+          (conditions.aq || conditions.wind || conditions.rain || conditions.uv) && (
           <div className="conditions">
             {conditions.rain && (
               <span
@@ -294,6 +296,27 @@ export default function RadarMap() {
                 <span className="chip-dot" style={{ background: conditions.aq.color }} />
                 Udara <b>{conditions.aq.psi}</b>
                 <span className="chip-sub">{conditions.aq.label}</span>
+              </span>
+            )}
+            {conditions.uv && (
+              <span
+                className="chip"
+                title={`Indeks UV jam ini ${conditions.uv.value} — potensi langit cerah (transferable ke Batam)`}
+              >
+                <svg
+                  className="uv-ico"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={conditions.uv.color}
+                  strokeWidth={1.7}
+                  strokeLinecap="round"
+                  aria-hidden
+                >
+                  <circle cx="12" cy="12" r="3.6" />
+                  <path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.1 5.1l1.7 1.7M17.2 17.2l1.7 1.7M18.9 5.1l-1.7 1.7M6.8 17.2l-1.7 1.7" />
+                </svg>
+                UV <b>{conditions.uv.value}</b>
+                <span className="chip-sub">{conditions.uv.label}</span>
               </span>
             )}
             {conditions.wind && (

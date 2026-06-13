@@ -490,6 +490,10 @@ input[type="range"].rng::-moz-range-thumb {
   height: 12px;
   fill: var(--accent);
 }
+.chip .uv-ico {
+  width: 13px;
+  height: 13px;
+}
 
 /* ===== HP: panel lebih ringkas biar peta dapat ruang lebih ===== */
 @media (max-width: 440px) {

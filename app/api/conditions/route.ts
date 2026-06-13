@@ -8,8 +8,10 @@ export const revalidate = 300;
 type Aq = { psi: number; pm25: number | null; label: string; color: string };
 type Wind = { speed: number; deg: number; label: string; station?: string };
 type Rain = { mm: number; station: string };
+type Uv = { value: number; label: string; color: string };
 
 const PSI_URL = "https://api.data.gov.sg/v1/environment/psi";
+const UV_URL = "https://api.data.gov.sg/v1/environment/uv-index";
 const RAIN_URL = "https://api.data.gov.sg/v1/environment/rainfall";
 const WIND_SPEED_URL = "https://api-open.data.gov.sg/v2/real-time/api/wind-speed";
 const WIND_DIR_URL = "https://api-open.data.gov.sg/v2/real-time/api/wind-direction";
@@ -107,10 +109,39 @@ async function getRain(): Promise<Rain | null> {
   }
 }
 
+function uvBand(v: number): { label: string; color: string } {
+  if (v <= 2) return { label: "Rendah", color: "#1aa06a" };
+  if (v <= 5) return { label: "Sedang", color: "#d99a2b" };
+  if (v <= 7) return { label: "Tinggi", color: "#e2683c" };
+  if (v <= 10) return { label: "Sangat Tinggi", color: "#dc3545" };
+  return { label: "Ekstrem", color: "#8a1a4a" };
+}
+
+// Indeks UV jam berjalan. Lintang Batam ~sama Singapura jadi transferable.
+// Hidden kalau 0 (malam / matahari terbenam) biar strip nggak penuh chip kosong.
+async function getUv(): Promise<Uv | null> {
+  try {
+    const res = await fetch(UV_URL, { next: { revalidate: 600 } });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const item = j?.items?.[0];
+    const arr: Array<{ value: number; timestamp: string }> = item?.index ?? [];
+    const cur = arr.find((e) => e.timestamp === item?.timestamp);
+    let value = typeof cur?.value === "number" ? cur.value : null;
+    if (value === null && arr.length) {
+      value = Math.max(...arr.map((e) => e.value).filter((v) => typeof v === "number"));
+    }
+    if (typeof value !== "number" || value <= 0) return null;
+    return { value, ...uvBand(value) };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
-  const [aq, wind, rain] = await Promise.all([getAq(), getWind(), getRain()]);
+  const [aq, wind, rain, uv] = await Promise.all([getAq(), getWind(), getRain(), getUv()]);
   return Response.json(
-    { aq, wind, rain },
+    { aq, wind, rain, uv },
     { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } },
   );
 }
