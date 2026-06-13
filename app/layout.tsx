@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   applicationName: "Gerimis",
   title: "Gerimis — Radar Hujan Batam",
   description:
-    "Peta radar hujan real-time untuk Batam & sekitarnya. Sumber data: Meteorological Service Singapore (jangkauan 240 km).",
+    "Radar hujan real-time untuk Batam & sekitarnya. Sumber data: Meteorological Service Singapore (jangkauan 240 km).",
   appleWebApp: {
     capable: true,
     title: "Gerimis",
@@ -15,7 +15,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b1220",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#eaf2fb" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0e1c" },
+  ],
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -28,6 +31,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

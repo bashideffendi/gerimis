@@ -9,45 +9,70 @@
 export type Frame = {
   url: string; // URL PNG radar
   ts: string; // timestamp SGT mentah, "YYYYMMDDHHMM"
-  wib: string; // label siap-tampil dalam WIB, mis. "Sab, 13 Jun 22.15"
+  time: string; // jam WIB siap-tampil, mis. "22.15"
+  date: string; // tanggal WIB siap-tampil, mis. "Sabtu, 13 Juni"
 };
+
+export type ThemeMode = "light" | "dark";
+export type ViewKey = "batam" | "regional" | "kepri";
 
 // Leaflet butuh bounds [[south, west], [north, east]] = [[lat_min,lng_min],[lat_max,lng_max]].
 //
-// CATATAN KALIBRASI: MSS nggak mempublikasikan bounding box gambar 240 km, dan
-// gambar radarnya nggak punya garis pantai buat dicocokin. Angka di bawah ini
-// ESTIMASI terukur: gambar 480 px diasumsikan 480 km (1 km/px) berpusat di titik
-// origin grid (1.3155 N, 103.8475 E) — pusat gambar 50 km MSS yang bounds-nya presisi.
-// Batam ada persis di dekat pusat gambar, jadi error overlay di area Batam minimal.
-// Kalau pas hujan ada selisih posisi, tinggal geser 4 angka ini.
+// CATATAN KALIBRASI (diperbarui 2026-06-13 via workflow registrasi citra):
+// MSS nggak publish bbox 240 km. Angka ini DITURUNKAN dengan georeferensi basemap
+// resmi MSS sendiri (240km-v2.jpg) — diregistrasi ke basemap 50 km yang bounds-nya
+// presisi, plus bukti kuat: citra 240 km = paruh-tengah konsentris dari citra 480 km
+// (skala tepat 0.500). Hasil: berpusat ~(1.350 N, 103.95 E) ≈ radar Changi, span ~4.0°
+// (~446 km, ~0.93 km/px). Confidence MEDIUM — center solid ~3 km, span ±~0.2°.
+// Lock presisi tinggi: georeferensi 240km-v2.jpg (ada garis pantai) vs OSM lalu baca sudutnya.
 export const RADAR_BOUNDS: [[number, number], [number, number]] = [
-  [-0.855, 101.691], // SW (lat_min, lng_min)
-  [3.486, 106.004], // NE (lat_max, lng_max)
+  [-0.66, 101.95], // SW (lat_min, lng_min)
+  [3.36, 105.95], // NE (lat_max, lng_max)
 ];
-
-// Tampilan awal peta: Batam + Bintan + ujung selatan Singapura kelihatan.
-export const MAP_CENTER: [number, number] = [1.08, 103.98];
-export const DEFAULT_ZOOM = 9;
-export const MIN_ZOOM = 7;
-export const MAX_ZOOM = 13;
 
 // Batas geser peta supaya nggak nyasar keluar jangkauan radar.
 export const MAX_BOUNDS: [[number, number], [number, number]] = RADAR_BOUNDS;
+export const MIN_ZOOM = 7;
+export const MAX_ZOOM = 12; // dikunci: lebih dari ini radar (1 km/px) mulai pecah
+
+// 3 preset view — zoom dipas-in biar pola hujan selalu kebaca.
+export const VIEWS: Record<
+  ViewKey,
+  { label: string; sub: string; center: [number, number]; zoom: number }
+> = {
+  batam: { label: "Kota Batam", sub: "fokus", center: [1.08, 104.02], zoom: 11 },
+  regional: { label: "Regional", sub: "240 km", center: [1.3, 103.92], zoom: 8 },
+  kepri: { label: "Kepri", sub: "provinsi", center: [0.45, 104.05], zoom: 8 },
+};
+export const DEFAULT_VIEW: ViewKey = "batam";
+
+// Basemap per tema (CARTO).
+export const TILES: Record<ThemeMode, string> = {
+  light: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+  dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+};
 
 // Penanda kota buat orientasi.
 export const PLACES: { name: string; lat: number; lng: number }[] = [
   { name: "Singapura", lat: 1.29, lng: 103.85 },
   { name: "Batam", lat: 1.105, lng: 104.045 },
-  { name: "Tg. Balai Karimun", lat: 1.083, lng: 103.43 },
   { name: "Tg. Pinang", lat: 0.918, lng: 104.456 },
+  { name: "Tg. Balai Karimun", lat: 1.0, lng: 103.43 },
+  { name: "Lingga", lat: -0.2, lng: 104.6 },
 ];
 
 // Skala warna intensitas hujan radar MSS (ringan → sangat lebat).
-export const LEGEND: { color: string; label: string }[] = [
-  { color: "#9ecae1", label: "Ringan" },
-  { color: "#41ab5d", label: "Sedang" },
-  { color: "#fed976", label: "Agak lebat" },
-  { color: "#fd8d3c", label: "Lebat" },
-  { color: "#e31a1c", label: "Sangat lebat" },
-  { color: "#7a0177", label: "Ekstrem" },
+export const LEGEND: string[] = [
+  "#6fb7e8",
+  "#41ab5d",
+  "#fed976",
+  "#fd8d3c",
+  "#e31a1c",
+  "#7a0177",
 ];
+
+// Tema default berdasar jam WIB (06.00–18.00 = terang). Dipakai client-side saja.
+export function timeBasedTheme(): ThemeMode {
+  const wibHour = (new Date().getUTCHours() + 7) % 24;
+  return wibHour >= 6 && wibHour < 18 ? "light" : "dark";
+}

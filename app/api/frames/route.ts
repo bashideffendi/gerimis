@@ -10,33 +10,32 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-// "YYYYMMDDHHMM" (SGT) -> label WIB siap tampil. SGT = UTC+8, WIB = UTC+7.
-function tsToWib(ts: string): string {
-  if (ts.length < 12) return "";
+// "YYYYMMDDHHMM" (SGT) -> {time, date} WIB siap tampil. SGT = UTC+8, WIB = UTC+7.
+function tsToWib(ts: string): { time: string; date: string } {
+  if (ts.length < 12) return { time: "", date: "" };
   const y = +ts.slice(0, 4);
   const mo = +ts.slice(4, 6);
   const d = +ts.slice(6, 8);
   const h = +ts.slice(8, 10);
   const mi = +ts.slice(10, 12);
-  const utcMs = Date.UTC(y, mo - 1, d, h, mi) - 8 * 3600 * 1000; // SGT -> instant UTC
-  const date = new Date(utcMs);
-  return date
-    .toLocaleString("id-ID", {
-      timeZone: "Asia/Jakarta",
-      weekday: "short",
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-    .replace(/\./g, ".");
+  const instant = new Date(Date.UTC(y, mo - 1, d, h, mi) - 8 * 3600 * 1000); // SGT -> instant UTC
+  const opts = { timeZone: "Asia/Jakarta" } as const;
+  const time = instant.toLocaleString("id-ID", { ...opts, hour: "2-digit", minute: "2-digit" });
+  const date = instant.toLocaleString("id-ID", {
+    ...opts,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  return { time, date };
 }
 
 function toFrame(url: string): Frame | null {
   const m = url.match(/dpsri_240km_(\d{12})\d*dBR/);
   if (!m) return null;
   const ts = m[1];
-  return { url, ts, wib: tsToWib(ts) };
+  const { time, date } = tsToWib(ts);
+  return { url, ts, time, date };
 }
 
 // Jalur utama: parse daftar frame langsung dari halaman MSS (slideshowimages(...)).
