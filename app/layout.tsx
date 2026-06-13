@@ -3,9 +3,15 @@ import "./globals.css";
 import "leaflet/dist/leaflet.css";
 
 export const metadata: Metadata = {
+  applicationName: "Gerimis",
   title: "Gerimis — Radar Hujan Batam",
   description:
     "Peta radar hujan real-time untuk Batam & sekitarnya. Sumber data: Meteorological Service Singapore (jangkauan 240 km).",
+  appleWebApp: {
+    capable: true,
+    title: "Gerimis",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export const viewport: Viewport = {
