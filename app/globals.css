@@ -444,3 +444,46 @@ input[type="range"].rng::-moz-range-thumb {
   color: var(--link);
   text-decoration: none;
 }
+
+/* ===== HP: panel lebih ringkas biar peta dapat ruang lebih ===== */
+@media (max-width: 440px) {
+  .topbar {
+    padding: 12px 14px;
+  }
+  .brand .name {
+    font-size: 21px;
+  }
+  .panel {
+    bottom: 12px;
+    width: calc(100% - 20px);
+    padding: 12px 14px 11px;
+    border-radius: 18px;
+  }
+  .status {
+    margin-bottom: 11px;
+  }
+  .status .time {
+    font-size: 23px;
+  }
+  .segmented {
+    margin-bottom: 11px;
+  }
+  .seg-btn {
+    font-size: 11px;
+    padding: 7px 4px 8px;
+  }
+  .transport {
+    gap: 11px;
+  }
+  .meta {
+    margin-top: 11px;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+  .legend .bar {
+    width: 104px;
+  }
+  .credit {
+    margin-top: 9px;
+  }
+}

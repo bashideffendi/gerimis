@@ -12,14 +12,12 @@ import {
 import {
   DEFAULT_VIEW,
   LEGEND,
-  MAX_BOUNDS,
   MAX_ZOOM,
   MIN_ZOOM,
   PLACES,
   RADAR_BOUNDS,
   TILES,
   VIEWS,
-  VIEW_PADDING,
   timeBasedTheme,
   type Frame,
   type ThemeMode,
@@ -30,17 +28,34 @@ const REFRESH_MS = 5 * 60 * 1000;
 const PLAY_MS = 650;
 const THEME_KEY = "hujan-theme";
 
-// Terbangkan peta ke preset view tiap kali view berubah.
-function ViewController({ view }: { view: ViewKey }) {
+type Padding = { paddingTopLeft: [number, number]; paddingBottomRight: [number, number] };
+
+// Fit peta ke bounding box view, dengan padding dinamis sesuai tinggi panel asli.
+// Fit ulang juga saat resize/rotasi layar — penting di HP (panel bisa lebih tinggi).
+function MapController({ view, getPadding }: { view: ViewKey; getPadding: () => Padding }) {
   const map = useMap();
-  const first = useRef(true);
+  const mounted = useRef(false);
+
   useEffect(() => {
-    if (first.current) {
-      first.current = false; // posisi awal udah diset MapContainer (bounds + padding)
-      return;
+    const opts = getPadding();
+    if (!mounted.current) {
+      mounted.current = true;
+      map.invalidateSize();
+      map.fitBounds(VIEWS[view].bounds, opts);
+    } else {
+      map.flyToBounds(VIEWS[view].bounds, { ...opts, duration: 0.8 });
     }
-    map.flyToBounds(VIEWS[view].bounds, { ...VIEW_PADDING, duration: 0.8 });
-  }, [view, map]);
+  }, [view, map, getPadding]);
+
+  useEffect(() => {
+    const refit = () => {
+      map.invalidateSize();
+      map.fitBounds(VIEWS[view].bounds, getPadding());
+    };
+    window.addEventListener("resize", refit);
+    return () => window.removeEventListener("resize", refit);
+  }, [view, map, getPadding]);
+
   return null;
 }
 
@@ -66,6 +81,17 @@ export default function RadarMap() {
 
   const followRef = useRef(true);
   const themeOverride = useRef<ThemeMode | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
+
+  // Padding fit dinamis: ukur tinggi panel asli (di HP panel bisa lebih tinggi karena
+  // konten wrap) biar wilayah selalu ke-frame penuh DI ATAS panel, nggak ketutup.
+  const getPadding = useCallback(() => {
+    const h = panelRef.current?.offsetHeight ?? 220;
+    return {
+      paddingTopLeft: [14, 72] as [number, number],
+      paddingBottomRight: [14, Math.round(h) + 24] as [number, number],
+    };
+  }, []);
 
   // Tema awal: pakai override tersimpan kalau ada, kalau nggak ikut jam WIB.
   // Komponen ini client-only (dynamic ssr:false) jadi aman baca localStorage di initializer.
@@ -140,12 +166,10 @@ export default function RadarMap() {
   return (
     <div data-theme={theme} style={{ position: "absolute", inset: 0 }}>
       <MapContainer
-        bounds={VIEWS[DEFAULT_VIEW].bounds}
-        boundsOptions={VIEW_PADDING}
+        center={[0.9, 104.0]}
+        zoom={9}
         minZoom={MIN_ZOOM}
         maxZoom={MAX_ZOOM}
-        maxBounds={MAX_BOUNDS}
-        maxBoundsViscosity={0.7}
         zoomControl={false}
         attributionControl={false}
         style={{ position: "absolute", inset: 0 }}
@@ -166,7 +190,7 @@ export default function RadarMap() {
             </Tooltip>
           </CircleMarker>
         ))}
-        <ViewController view={view} />
+        <MapController view={view} getPadding={getPadding} />
       </MapContainer>
 
       <div className="scrim-top" />
@@ -199,7 +223,7 @@ export default function RadarMap() {
         </div>
       </header>
 
-      <section className="panel" aria-label="Kontrol radar">
+      <section className="panel" aria-label="Kontrol radar" ref={panelRef}>
         <div className="status">
           <div>
             <div className="time">
