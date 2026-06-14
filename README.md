@@ -15,16 +15,17 @@ Hujan di Batam ngambil citra radar hujan MSS itu, lalu nampilinnya sebagai overl
 atas peta — biar gampang ngecek "lagi hujan apa nggak" dan dari arah mana awan datang,
 tanpa harus baca peta full Singapura.
 
-Semua pengambilan citra radar jalan dari sisi server (route handler) yang nge-parse
-daftar frame langsung dari halaman MSS; gambar PNG-nya ditampilin di browser lewat
-Leaflet `ImageOverlay` (nggak kena CORS karena cuma dirender, bukan dibaca pixel-nya).
+Daftar frame digenerate dari sisi server (route handler) sebagai timestamp 5-menitan
+SGT — citra radar MSS terbit tiap 5 menit (yang "15 menit" cuma daftar slideshow di
+web MSS). Gambar PNG-nya ditampilin di browser lewat Leaflet `ImageOverlay` (nggak
+kena CORS karena cuma dirender, bukan dibaca pixel-nya).
 
 ## Features
 
 - ✅ Overlay radar hujan 240 km di atas peta, **3 preset view** (Kota Batam / Regional 240 km / Kepulauan Riau) dengan `fitBounds` sadar-chrome
 - ✅ Tema **otomatis siang/malam** (ikut jam WIB) + toggle manual tersimpan
-- ✅ Time slider 25 frame (≈6 jam ke belakang) + animasi play
-- ✅ Auto-refresh daftar frame tiap 5 menit (radar update tiap 15 menit)
+- ✅ Time slider 30 frame 5-menitan (≈2,5 jam ke belakang) + animasi play
+- ✅ Auto-refresh daftar frame (citra radar MSS terbit tiap 5 menit)
 - ✅ Label waktu WIB, penanda kota, atur transparansi + legenda intensitas
 - ✅ PWA-lite (installable, tanpa service worker)
 - 🚧 Kalibrasi presisi tinggi bounding box overlay 240 km (lihat catatan)
