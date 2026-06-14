@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AttributionControl,
   CircleMarker,
   ImageOverlay,
   MapContainer,
@@ -116,9 +117,13 @@ export default function RadarMap() {
     }
   });
 
+  const [stale, setStale] = useState(false);
+  const [conditionsError, setConditionsError] = useState(false);
+
   const followRef = useRef(true);
   const themeOverride = useRef<ThemeMode | null>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const preloadedRef = useRef<Set<string>>(new Set());
 
   // Padding fit dinamis: ukur tinggi panel asli (di HP panel bisa lebih tinggi karena
   // konten wrap) biar wilayah selalu ke-frame penuh DI ATAS panel, nggak ketutup.
@@ -149,10 +154,13 @@ export default function RadarMap() {
     try {
       const res = await fetch("/api/frames");
       if (!res.ok) throw new Error("bad");
-      const data: { frames: Frame[] } = await res.json();
+      const data: { frames: Frame[]; stale?: boolean } = await res.json();
       if (data.frames?.length) {
         setFrames(data.frames);
-        if (followRef.current) setIdx(data.frames.length - 1);
+        setStale(Boolean(data.stale));
+        setIdx((prev) =>
+          followRef.current ? data.frames.length - 1 : Math.min(prev, data.frames.length - 1),
+        );
         setStatus("ok");
       } else {
         setStatus("error");
@@ -173,10 +181,11 @@ export default function RadarMap() {
   const loadConditions = useCallback(async () => {
     try {
       const res = await fetch("/api/conditions");
-      if (!res.ok) return;
+      if (!res.ok) throw new Error("bad");
       setConditions(await res.json());
+      setConditionsError(false);
     } catch {
-      /* abaikan — chip tinggal nggak muncul */
+      setConditionsError(true);
     }
   }, []);
 
@@ -188,6 +197,8 @@ export default function RadarMap() {
 
   useEffect(() => {
     frames.forEach((f) => {
+      if (preloadedRef.current.has(f.url)) return;
+      preloadedRef.current.add(f.url);
       const img = new window.Image();
       img.src = f.url;
     });
@@ -195,7 +206,7 @@ export default function RadarMap() {
 
   useEffect(() => {
     if (!playing || frames.length < 2) return;
-    const t = setInterval(() => setIdx((i) => (i + 1) % frames.length), PLAY_MS);
+    const t = setInterval(() => setIdx((i) => (i + 1) % Math.max(1, frames.length)), PLAY_MS);
     return () => clearInterval(t);
   }, [playing, frames.length]);
 
@@ -235,7 +246,14 @@ export default function RadarMap() {
         attributionControl={false}
         style={{ position: "absolute", inset: 0 }}
       >
-        <TileLayer key={theme} url={TILES[theme]} subdomains={["a", "b", "c", "d"]} maxZoom={20} />
+        <AttributionControl position="bottomright" prefix={false} />
+        <TileLayer
+          key={theme}
+          url={TILES[theme]}
+          subdomains={["a", "b", "c", "d"]}
+          maxZoom={20}
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> &middot; Radar: MSS &middot; Cuaca: data.gov.sg/NEA'
+        />
         {current && (
           <ImageOverlay url={current.url} bounds={RADAR_BOUNDS} opacity={opacity} zIndex={300} />
         )}
@@ -271,8 +289,8 @@ export default function RadarMap() {
           </div>
         </div>
         <div className="topbar-right">
-          <span className="live-pill">
-            <span className="dot" /> Langsung
+          <span className="live-pill" data-stale={stale ? "" : undefined}>
+            <span className="dot" /> {stale ? "Tertunda" : "Langsung"}
           </span>
           <button
             className="theme-toggle"
@@ -303,7 +321,7 @@ export default function RadarMap() {
           <button className="panel-mini" onClick={() => setCollapsed(false)}>
             <span
               className="mini-dot"
-              style={{ background: isLatest ? "var(--live-dot)" : "#f59e0b" }}
+              style={{ background: isLatest && !stale ? "var(--live-dot)" : "#f59e0b" }}
             />
             <span className="mini-time">
               {current ? current.time : "—"}
@@ -342,9 +360,9 @@ export default function RadarMap() {
           <div className="state">
             <span
               className="d"
-              style={{ background: isLatest ? "var(--live-dot)" : "#f59e0b" }}
+              style={{ background: isLatest && !stale ? "var(--live-dot)" : "#f59e0b" }}
             />
-            {isLatest ? "Citra terakhir" : "Putar ulang"}
+            {isLatest ? (stale ? "Data tertunda" : "Citra terakhir") : "Putar ulang"}
           </div>
         </div>
 
@@ -416,6 +434,10 @@ export default function RadarMap() {
           </div>
         )}
 
+        {conditionsError && !conditions && (
+          <div className="conditions-err">Data cuaca tambahan lagi nggak tersedia</div>
+        )}
+
         <div className="segmented" role="tablist" aria-label="Pilih cakupan">
           {(Object.keys(VIEWS) as ViewKey[]).map((k) => (
             <button
@@ -452,6 +474,7 @@ export default function RadarMap() {
           <input
             className="rng"
             type="range"
+            aria-label="Penggeser waktu citra hujan"
             min={0}
             max={Math.max(0, frames.length - 1)}
             value={idx}
@@ -471,6 +494,7 @@ export default function RadarMap() {
             <input
               className="rng"
               type="range"
+              aria-label="Transparansi overlay radar"
               min={0.3}
               max={1}
               step={0.05}
@@ -490,7 +514,7 @@ export default function RadarMap() {
         </div>
 
         <div className="credit">
-          Sumber citra radar:{" "}
+          Radar:{" "}
           <a
             href="https://www.weather.gov.sg/weather-rain-area-240km"
             target="_blank"
@@ -498,7 +522,11 @@ export default function RadarMap() {
           >
             Meteorological Service Singapore
           </a>{" "}
-          · diperbarui tiap 5 menit
+          · Cuaca:{" "}
+          <a href="https://data.gov.sg" target="_blank" rel="noopener noreferrer">
+            data.gov.sg / NEA
+          </a>{" "}
+          · Peta: © OpenStreetMap, CARTO · diperbarui tiap 5 menit
         </div>
           </>
         )}

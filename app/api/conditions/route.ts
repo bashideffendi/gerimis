@@ -51,7 +51,7 @@ async function pickStation(
   url: string,
 ): Promise<{ value: number | null; name?: string }> {
   try {
-    const res = await fetch(url, { next: { revalidate: 180 } });
+    const res = await fetch(url, { next: { revalidate: 300 } });
     if (!res.ok) return { value: null };
     const j = await res.json();
     const d = j?.data ?? {};
@@ -121,17 +121,16 @@ function uvBand(v: number): { label: string; color: string } {
 // Hidden kalau 0 (malam / matahari terbenam) biar strip nggak penuh chip kosong.
 async function getUv(): Promise<Uv | null> {
   try {
-    const res = await fetch(UV_URL, { next: { revalidate: 600 } });
+    const res = await fetch(UV_URL, { next: { revalidate: 300 } });
     if (!res.ok) return null;
     const j = await res.json();
     const item = j?.items?.[0];
     const arr: Array<{ value: number; timestamp: string }> = item?.index ?? [];
+    // HARUS nilai jam berjalan (cocok timestamp). JANGAN fallback ke max harian —
+    // bisa nampilin puncak siang (mis. 8) pas pagi yang sebenernya 1 → menyesatkan.
     const cur = arr.find((e) => e.timestamp === item?.timestamp);
-    let value = typeof cur?.value === "number" ? cur.value : null;
-    if (value === null && arr.length) {
-      value = Math.max(...arr.map((e) => e.value).filter((v) => typeof v === "number"));
-    }
-    if (typeof value !== "number" || value <= 0) return null;
+    const value = typeof cur?.value === "number" ? cur.value : null;
+    if (value === null || value <= 0) return null;
     return { value, ...uvBand(value) };
   } catch {
     return null;

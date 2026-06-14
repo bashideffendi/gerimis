@@ -9,7 +9,7 @@ export const revalidate = 60;
 const FILE_BASE = "https://www.weather.gov.sg/files/rainarea/240km";
 const STEP_MIN = 5; // cadence file radar
 const FRAME_COUNT = 30; // 30 x 5 mnt = 2,5 jam riwayat
-const PROBE = 6; // berapa kandidat terbaru yang dicek (cover jeda terbit s/d ~25 mnt)
+const PROBE = 5; // berapa kandidat terbaru yang dicek (cover jeda terbit s/d ~20 mnt)
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -61,14 +61,14 @@ async function exists(ts: string): Promise<boolean> {
 }
 
 // Timestamp file terbaru yang udah terbit — probe paralel mundur dari "sekarang" SGT.
-async function newestTs(): Promise<string> {
+async function newestTs(): Promise<{ ts: string; found: boolean }> {
   const start = new Date(Date.now() + 8 * 3600 * 1000); // wall-clock SGT
   start.setUTCMinutes(start.getUTCMinutes() - (start.getUTCMinutes() % STEP_MIN), 0, 0);
   const cands: string[] = [];
   for (let i = 0; i < PROBE; i++) cands.push(tsOf(new Date(start.getTime() - i * STEP_MIN * 60000)));
   const oks = await Promise.all(cands.map((ts) => exists(ts)));
   const i = oks.findIndex(Boolean);
-  return i >= 0 ? cands[i] : cands[cands.length - 1];
+  return i >= 0 ? { ts: cands[i], found: true } : { ts: cands[cands.length - 1], found: false };
 }
 
 function framesEndingAt(endTs: string): Frame[] {
@@ -86,10 +86,20 @@ function framesEndingAt(endTs: string): Frame[] {
 }
 
 export async function GET() {
-  const endTs = await newestTs();
+  const { ts: endTs, found } = await newestTs();
   const frames = framesEndingAt(endTs);
+  // umur frame terbaru (menit). instant asli = endTs(SGT) - 8 jam.
+  const y = +endTs.slice(0, 4),
+    mo = +endTs.slice(4, 6) - 1,
+    d = +endTs.slice(6, 8),
+    h = +endTs.slice(8, 10),
+    mi = +endTs.slice(10, 12);
+  const endInstant = Date.UTC(y, mo, d, h, mi) - 8 * 3600 * 1000;
+  const ageMinutes = Math.round((Date.now() - endInstant) / 60000);
+  // stale: MSS nggak nerbitin apa-apa (found=false) atau frame terbaru > 18 mnt
+  const stale = !found || ageMinutes > 18;
   return Response.json(
-    { frames, count: frames.length },
+    { frames, count: frames.length, stale, ageMinutes },
     { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=180" } },
   );
 }

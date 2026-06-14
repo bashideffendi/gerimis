@@ -30,7 +30,7 @@
   --thumb: #2f6fb3;
   --place-text: #3b4150;
   --place-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 1px 3px rgba(255, 255, 255, 0.9);
-  --credit: #9aa0ab;
+  --credit: #64748b;
   --link: #2f6fb3;
   --radar-blend: normal;
   --radar-filter: saturate(1.05);
@@ -66,7 +66,7 @@
   --thumb: #6ea2dd;
   --place-text: #e6e9ef;
   --place-shadow: 0 1px 5px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9);
-  --credit: rgba(255, 255, 255, 0.38);
+  --credit: rgba(255, 255, 255, 0.66);
   --link: #8fb8e8;
   --radar-blend: screen;
   --radar-filter: saturate(1.12) brightness(1.04);
@@ -576,6 +576,54 @@ input[type="range"].rng::-moz-range-thumb {
   color: var(--text-dim);
 }
 
+/* ===== keyboard focus (WCAG 2.4.7) ===== */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.leaflet-container :focus-visible {
+  outline-offset: 0;
+}
+
+/* ===== status tertunda (stale) ===== */
+.live-pill[data-stale] {
+  color: #c98214;
+  border-color: rgba(217, 154, 43, 0.4);
+}
+.live-pill[data-stale] .dot {
+  background: #f59e0b;
+  animation: none;
+}
+.conditions-err {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin: -2px 0 13px;
+  padding: 0 2px;
+  font-weight: 500;
+}
+
+/* ===== atribusi peta (Leaflet) — wajib & terbaca ===== */
+.leaflet-control-attribution {
+  background: var(--panel-bg) !important;
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  color: var(--text-muted) !important;
+  font-family: "Inter", system-ui, sans-serif !important;
+  font-size: 10px !important;
+  line-height: 1.4 !important;
+  padding: 2px 7px !important;
+  border-radius: 8px 0 0 0;
+  border: 1px solid var(--panel-border);
+  border-right: 0;
+  border-bottom: 0;
+  max-width: 78vw;
+}
+.leaflet-control-attribution a {
+  color: var(--link) !important;
+  text-decoration: none;
+}
+
 /* ===== HP: panel lebih ringkas biar peta dapat ruang lebih ===== */
 @media (max-width: 440px) {
   .topbar {
@@ -616,5 +664,21 @@ input[type="range"].rng::-moz-range-thumb {
   }
   .credit {
     margin-top: 9px;
+  }
+  /* target sentuh >= ~44px di HP */
+  .theme-toggle {
+    width: 42px;
+    height: 42px;
+  }
+  .play {
+    width: 44px;
+    height: 44px;
+  }
+  input[type="range"].rng {
+    height: 6px;
+  }
+  input[type="range"].rng::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
   }
 }
