@@ -32,10 +32,21 @@ type Padding = { paddingTopLeft: [number, number]; paddingBottomRight: [number, 
 
 // Fit peta ke bounding box view, dengan padding dinamis sesuai tinggi panel asli.
 // Fit ulang juga saat resize/rotasi layar — penting di HP (panel bisa lebih tinggi).
-function MapController({ view, getPadding }: { view: ViewKey; getPadding: () => Padding }) {
+function MapController({
+  view,
+  getPadding,
+  collapsed,
+}: {
+  view: ViewKey;
+  getPadding: () => Padding;
+  collapsed: boolean;
+}) {
   const map = useMap();
   const mounted = useRef(false);
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
+  // view berubah (+ mount): fit/terbang ke wilayah
   useEffect(() => {
     const opts = getPadding();
     if (!mounted.current) {
@@ -47,14 +58,25 @@ function MapController({ view, getPadding }: { view: ViewKey; getPadding: () => 
     }
   }, [view, map, getPadding]);
 
+  // panel ditutup/dibuka -> tinggi panel berubah -> re-frame halus pakai ruang baru
+  const firstCollapse = useRef(true);
+  useEffect(() => {
+    if (firstCollapse.current) {
+      firstCollapse.current = false;
+      return;
+    }
+    map.flyToBounds(VIEWS[viewRef.current].bounds, { ...getPadding(), duration: 0.4 });
+  }, [collapsed, map, getPadding]);
+
+  // resize/rotasi layar
   useEffect(() => {
     const refit = () => {
       map.invalidateSize();
-      map.fitBounds(VIEWS[view].bounds, getPadding());
+      map.fitBounds(VIEWS[viewRef.current].bounds, getPadding());
     };
     window.addEventListener("resize", refit);
     return () => window.removeEventListener("resize", refit);
-  }, [view, map, getPadding]);
+  }, [map, getPadding]);
 
   return null;
 }
@@ -86,6 +108,13 @@ export default function RadarMap() {
   const [view, setView] = useState<ViewKey>(DEFAULT_VIEW);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   const [conditions, setConditions] = useState<Conditions | null>(null);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("hujan-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
 
   const followRef = useRef(true);
   const themeOverride = useRef<ThemeMode | null>(null);
@@ -170,6 +199,14 @@ export default function RadarMap() {
     return () => clearInterval(t);
   }, [playing, frames.length]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("hujan-collapsed", collapsed ? "1" : "0");
+    } catch {
+      /* abaikan */
+    }
+  }, [collapsed]);
+
   function toggleTheme() {
     setTheme((t) => {
       const next: ThemeMode = t === "dark" ? "light" : "dark";
@@ -214,7 +251,7 @@ export default function RadarMap() {
             </Tooltip>
           </CircleMarker>
         ))}
-        <MapController view={view} getPadding={getPadding} />
+        <MapController view={view} getPadding={getPadding} collapsed={collapsed} />
       </MapContainer>
 
       <div className="scrim-top" />
@@ -247,7 +284,47 @@ export default function RadarMap() {
         </div>
       </header>
 
-      <section className="panel" aria-label="Kontrol radar" ref={panelRef}>
+      <section
+        className="panel"
+        aria-label="Kontrol radar"
+        ref={panelRef}
+        data-collapsed={collapsed}
+      >
+        <button
+          className="panel-handle"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? "Buka panel" : "Sembunyikan panel"}
+          aria-expanded={!collapsed}
+        >
+          <span className="grip" />
+        </button>
+
+        {collapsed ? (
+          <button className="panel-mini" onClick={() => setCollapsed(false)}>
+            <span
+              className="mini-dot"
+              style={{ background: isLatest ? "var(--live-dot)" : "#f59e0b" }}
+            />
+            <span className="mini-time">
+              {current ? current.time : "—"}
+              <span className="wib">WIB</span>
+            </span>
+            <span className="mini-view">{VIEWS[view].label}</span>
+            <svg
+              className="mini-chevron"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M6 15l6-6 6 6" />
+            </svg>
+          </button>
+        ) : (
+          <>
         <div className="status">
           <div>
             <div className="time">
@@ -423,6 +500,8 @@ export default function RadarMap() {
           </a>{" "}
           · diperbarui tiap 5 menit
         </div>
+          </>
+        )}
       </section>
     </div>
   );
