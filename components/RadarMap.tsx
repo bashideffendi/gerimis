@@ -421,7 +421,7 @@ export default function RadarMap() {
           >
             Meteorological Service Singapore
           </a>{" "}
-          · diperbarui tiap 15 menit
+          · diperbarui tiap 5 menit
         </div>
       </section>
     </div>

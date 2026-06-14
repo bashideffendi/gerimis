@@ -1,10 +1,15 @@
 import type { Frame } from "@/lib/radar";
 
-// Cache hasil 5 menit (radar update tiap 15 menit) — hemat hit ke MSS + cold start.
-export const revalidate = 300;
+// Citra radar 240km MSS terbit tiap 5 MENIT (dicek langsung di server: file ada
+// di tiap kelipatan menit :05). Yang "15 menit" itu cuma daftar slideshow di web
+// MSS (mereka under-sample buat animasi). Jadi kita generate timestamp 5-menitan
+// sendiri → lebih fresh + animasi lebih mulus + nggak gantung markup halaman MSS.
+export const revalidate = 120;
 
-const MSS_PAGE = "https://www.weather.gov.sg/weather-rain-area-240km";
 const FILE_BASE = "https://www.weather.gov.sg/files/rainarea/240km";
+const STEP_MIN = 5; // cadence file radar
+const LAG_MIN = 10; // jeda terbit — file terbaru ~10 menit di belakang "sekarang"
+const FRAME_COUNT = 30; // 30 x 5 mnt = 2,5 jam riwayat
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -12,12 +17,11 @@ function pad(n: number): string {
 
 // "YYYYMMDDHHMM" (SGT) -> {time, date} WIB siap tampil. SGT = UTC+8, WIB = UTC+7.
 function tsToWib(ts: string): { time: string; date: string } {
-  if (ts.length < 12) return { time: "", date: "" };
-  const y = +ts.slice(0, 4);
-  const mo = +ts.slice(4, 6);
-  const d = +ts.slice(6, 8);
-  const h = +ts.slice(8, 10);
-  const mi = +ts.slice(10, 12);
+  const y = +ts.slice(0, 4),
+    mo = +ts.slice(4, 6),
+    d = +ts.slice(6, 8),
+    h = +ts.slice(8, 10),
+    mi = +ts.slice(10, 12);
   const instant = new Date(Date.UTC(y, mo - 1, d, h, mi) - 8 * 3600 * 1000); // SGT -> instant UTC
   const opts = { timeZone: "Asia/Jakarta" } as const;
   const time = instant.toLocaleString("id-ID", { ...opts, hour: "2-digit", minute: "2-digit" });
@@ -30,56 +34,30 @@ function tsToWib(ts: string): { time: string; date: string } {
   return { time, date };
 }
 
-function toFrame(url: string): Frame | null {
-  const m = url.match(/dpsri_240km_(\d{12})\d*dBR/);
-  if (!m) return null;
-  const ts = m[1];
+function toFrame(ts: string): Frame {
   const { time, date } = tsToWib(ts);
-  return { url, ts, time, date };
+  return { url: `${FILE_BASE}/dpsri_240km_${ts}0000dBR.dpsri.png`, ts, time, date };
 }
 
-// Jalur utama: parse daftar frame langsung dari halaman MSS (slideshowimages(...)).
-function parseFromPage(html: string): Frame[] {
-  const call = html.match(/slideshowimages\(([\s\S]*?)\)\s*;/);
-  if (!call) return [];
-  const urls = [...call[1].matchAll(/"(https?:\/\/[^"]+?\.png)"/g)].map((x) => x[1]);
-  return urls.map(toFrame).filter((f): f is Frame => f !== null);
-}
-
-// Cadangan: kalau markup MSS berubah, generate 25 timestamp 15-menitan terakhir (SGT).
-function generateFrames(count = 25): Frame[] {
-  const nowSgt = new Date(Date.now() + 8 * 3600 * 1000); // geser ke wall-clock SGT
-  const floorMin = nowSgt.getUTCMinutes() - (nowSgt.getUTCMinutes() % 15);
-  nowSgt.setUTCMinutes(floorMin, 0, 0);
+// Generate timestamp 5-menitan SGT, berhenti ~10 menit di belakang (jeda terbit MSS).
+function generateFrames(): Frame[] {
+  const sgt = new Date(Date.now() + 8 * 3600 * 1000 - LAG_MIN * 60 * 1000);
+  sgt.setUTCMinutes(sgt.getUTCMinutes() - (sgt.getUTCMinutes() % STEP_MIN), 0, 0);
   const frames: Frame[] = [];
-  for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(nowSgt.getTime() - i * 15 * 60 * 1000);
+  for (let i = FRAME_COUNT - 1; i >= 0; i--) {
+    const d = new Date(sgt.getTime() - i * STEP_MIN * 60 * 1000);
     const ts =
       `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}` +
       `${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
-    const url = `${FILE_BASE}/dpsri_240km_${ts}0000dBR.dpsri.png`;
-    const f = toFrame(url);
-    if (f) frames.push(f);
+    frames.push(toFrame(ts));
   }
   return frames;
 }
 
 export async function GET() {
-  let frames: Frame[] = [];
-  try {
-    const res = await fetch(MSS_PAGE, {
-      next: { revalidate: 300 },
-      headers: { "User-Agent": "Mozilla/5.0 (Gerimis radar viewer)" },
-    });
-    if (res.ok) frames = parseFromPage(await res.text());
-  } catch {
-    // diam — fallback di bawah
-  }
-
-  if (frames.length === 0) frames = generateFrames();
-
+  const frames = generateFrames();
   return Response.json(
     { frames, count: frames.length },
-    { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } },
+    { headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300" } },
   );
 }
