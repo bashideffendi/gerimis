@@ -4,12 +4,15 @@ import type { Frame } from "@/lib/radar";
 // langsung di server). Daripada nebak jeda pakai angka tetap, server PROBE file
 // paling baru yang BENERAN udah terbit, lalu susun 30 frame mundur dari situ →
 // selalu sefresh mungkin, nggak pernah nampilin frame kosong (404) sebagai "terbaru".
-export const revalidate = 60;
+// Dynamic + no-store: respons SELALU dihitung ulang per request (jam frame selalu
+// terbaru). Kalau di-ISR/cache, timestamp-nya beku di waktu generate (bug "selalu
+// buka jam 09.15"). Probe ke MSS tetap ringan (file ~16KB, traffic personal).
+export const dynamic = "force-dynamic";
 
 const FILE_BASE = "https://www.weather.gov.sg/files/rainarea/240km";
 const STEP_MIN = 5; // cadence file radar
 const FRAME_COUNT = 30; // 30 x 5 mnt = 2,5 jam riwayat
-const PROBE = 5; // berapa kandidat terbaru yang dicek (cover jeda terbit s/d ~20 mnt)
+const PROBE = 4; // berapa kandidat terbaru yang dicek (cover jeda terbit s/d ~15 mnt)
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -100,6 +103,6 @@ export async function GET() {
   const stale = !found || ageMinutes > 18;
   return Response.json(
     { frames, count: frames.length, stale, ageMinutes },
-    { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=180" } },
+    { headers: { "Cache-Control": "no-store" } },
   );
 }

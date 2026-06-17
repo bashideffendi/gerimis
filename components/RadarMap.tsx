@@ -159,7 +159,7 @@ export default function RadarMap() {
 
   const loadFrames = useCallback(async () => {
     try {
-      const res = await fetch("/api/frames");
+      const res = await fetch("/api/frames", { cache: "no-store" });
       if (!res.ok) throw new Error("bad");
       const data: { frames: Frame[]; stale?: boolean } = await res.json();
       if (data.frames?.length) {
@@ -187,7 +187,7 @@ export default function RadarMap() {
 
   const loadConditions = useCallback(async () => {
     try {
-      const res = await fetch("/api/conditions");
+      const res = await fetch("/api/conditions", { cache: "no-store" });
       if (!res.ok) throw new Error("bad");
       setConditions(await res.json());
       setConditionsError(false);
@@ -201,6 +201,26 @@ export default function RadarMap() {
     const t = setInterval(loadConditions, REFRESH_MS);
     return () => clearInterval(t);
   }, [loadConditions]);
+
+  // App balik kelihatan (reopen PWA / balik ke tab / restore dari bfcache) -> fetch
+  // ulang. Penting buat PWA standalone yang nggak punya tombol refresh.
+  useEffect(() => {
+    const refetch = () => {
+      if (document.visibilityState === "visible") {
+        loadFrames();
+        loadConditions();
+      }
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) refetch();
+    };
+    document.addEventListener("visibilitychange", refetch);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", refetch);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, [loadFrames, loadConditions]);
 
   useEffect(() => {
     frames.forEach((f) => {

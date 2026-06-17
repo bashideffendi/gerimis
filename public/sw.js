@@ -2,7 +2,7 @@
    - Data realtime (API sendiri, radar MSS, NEA, basemap tiles): NETWORK-ONLY (gak di-cache).
    - Aset statis Next (/_next/static/*, content-hashed = immutable): cache-first (buat offline shell).
    - Navigasi/HTML: network-first (update nempel, gak stale), fallback cache pas offline. */
-const SHELL = "hujan-shell-v2";
+const SHELL = "hujan-shell-v3";
 
 self.addEventListener("install", () => self.skipWaiting());
 
