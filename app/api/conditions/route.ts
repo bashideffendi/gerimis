@@ -159,14 +159,17 @@ function parseBmkgUtc(s: string): number {
   return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : NaN;
 }
 
-// Warna ikut kategori gelombang BMKG (cek "sangat tinggi" sebelum "tinggi").
+// Warna ikut kategori gelombang BMKG — samakan dgn choropleth mode OMBAK (lib/radar
+// WAVE_FILL.light). Cek "sangat …" SEBELUM yg polos.
 function waveColor(cat: string): string {
   const c = cat.toLowerCase();
+  if (c.includes("sangat ekstrem")) return "#6a0f3a";
+  if (c.includes("ekstrem")) return "#a31d52";
   if (c.includes("sangat tinggi")) return "#dc3545";
-  if (c.includes("ekstrem")) return "#8a1a4a";
-  if (c.includes("tinggi")) return "#e2683c";
-  if (c.includes("sedang")) return "#d99a2b";
-  return "#1aa06a"; // Tenang / Rendah
+  if (c.includes("tinggi")) return "#e8852f";
+  if (c.includes("sedang")) return "#efb528";
+  if (c.includes("rendah")) return "#97c459";
+  return "#5dcaa5"; // Tenang
 }
 
 async function getWave(): Promise<Wave | null> {
@@ -200,7 +203,8 @@ async function getWave(): Promise<Wave | null> {
       windFrom: String(cur.wind_from ?? ""),
       windMin: Number(cur.wind_speed_min ?? 0),
       windMax: Number(cur.wind_speed_max ?? 0),
-      warning: cur.warning_desc ? String(cur.warning_desc) : null,
+      // BMKG isi "NIL" (bukan kosong) kalau tak ada peringatan → jangan tampilkan
+      warning: cur.warning_desc && cur.warning_desc !== "NIL" ? String(cur.warning_desc) : null,
       area: String(j?.name ?? "Perairan Kep. Batam"),
     };
   } catch {

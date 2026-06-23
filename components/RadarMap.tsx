@@ -19,16 +19,32 @@ import {
   RADAR_BOUNDS,
   TILES,
   VIEWS,
+  WAVE_CATS,
+  WAVE_FILL,
+  WAVE_PERIODS,
+  WAVE_RANGE,
   timeBasedTheme,
   type Frame,
+  type Mode,
   type ThemeMode,
   type ViewKey,
 } from "@/lib/radar";
 import IosInstallHint from "./IosInstallHint";
+import WaveLayer from "./WaveLayer";
 
 const REFRESH_MS = 2 * 60 * 1000; // refetch frame & kondisi tiap 2 mnt (radar terbit tiap 5 mnt)
 const PLAY_MS = 650;
+const WAVE_PLAY_MS = 1500; // sweep periode prakiraan lebih pelan (bukan animasi badai)
 const THEME_KEY = "hujan-theme";
+const MODE_KEY = "hujan-mode";
+
+// Kategori BMKG → label/desc rapi buat popup (titik → koma, " - " → en-dash).
+function fmtWaveDesc(s: string): string {
+  return s.replace(" - ", "–").replace(/(\d)\.(\d)/g, "$1,$2");
+}
+function esc(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+}
 
 type Padding = { paddingTopLeft: [number, number]; paddingBottomRight: [number, number] };
 
@@ -113,6 +129,13 @@ type Conditions = {
   } | null;
 };
 
+type WaveOverview = {
+  issued: string | null;
+  periods: { key: string; from: number | null; to: number | null }[];
+  nowIndex: number;
+  areas: Record<string, Record<string, string>>;
+};
+
 type BIPEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: string }>;
@@ -138,10 +161,25 @@ export default function RadarMap() {
   const [conditionsError, setConditionsError] = useState(false);
   const [installEvt, setInstallEvt] = useState<BIPEvent | null>(null);
 
+  // Mode tampilan: HUJAN (radar) vs OMBAK (choropleth gelombang). State ombak terpisah
+  // dari radar (idx/opacity) biar balik mode posisi masing-masing tetap.
+  const [mode, setMode] = useState<Mode>(() => {
+    try {
+      return localStorage.getItem(MODE_KEY) === "ombak" ? "ombak" : "hujan";
+    } catch {
+      return "hujan";
+    }
+  });
+  const [wavePeriod, setWavePeriod] = useState(0);
+  const [waveOpacity, setWaveOpacity] = useState(0.55);
+  const [waveData, setWaveData] = useState<WaveOverview | null>(null);
+
   const followRef = useRef(true);
   const themeOverride = useRef<ThemeMode | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const preloadedRef = useRef<Set<string>>(new Set());
+  const wavePeriodRef = useRef(0);
+  wavePeriodRef.current = wavePeriod;
 
   // Padding fit dinamis: ukur tinggi panel asli (di HP panel bisa lebih tinggi karena
   // konten wrap) biar wilayah selalu ke-frame penuh DI ATAS panel, nggak ketutup.
@@ -213,6 +251,34 @@ export default function RadarMap() {
     return () => clearInterval(t);
   }, [loadConditions]);
 
+  const loadWaves = useCallback(async (resetPeriod: boolean) => {
+    try {
+      const res = await fetch("/api/wave-overview", { cache: "no-store" });
+      if (!res.ok) throw new Error("bad");
+      const d: WaveOverview = await res.json();
+      setWaveData(d);
+      // buka di periode yg nutupin jam sekarang (bukan default "Hari ini" yg bisa basi)
+      if (resetPeriod && typeof d.nowIndex === "number") {
+        setWavePeriod(Math.max(0, Math.min(3, d.nowIndex)));
+      }
+    } catch {
+      /* graceful: layer pakai warna fallback abu */
+    }
+  }, []);
+
+  // Masuk mode OMBAK & belum ada data → ambil overview kategori.
+  useEffect(() => {
+    if (mode === "ombak" && !waveData) loadWaves(true);
+  }, [mode, waveData, loadWaves]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MODE_KEY, mode);
+    } catch {
+      /* abaikan */
+    }
+  }, [mode]);
+
   // App balik kelihatan (reopen PWA / balik ke tab / restore dari bfcache) -> fetch
   // ulang. Penting buat PWA standalone yang nggak punya tombol refresh.
   useEffect(() => {
@@ -220,6 +286,7 @@ export default function RadarMap() {
       if (document.visibilityState === "visible") {
         loadFrames();
         loadConditions();
+        if (mode === "ombak") loadWaves(false);
       }
     };
     const onPageShow = (e: PageTransitionEvent) => {
@@ -231,7 +298,7 @@ export default function RadarMap() {
       document.removeEventListener("visibilitychange", refetch);
       window.removeEventListener("pageshow", onPageShow);
     };
-  }, [loadFrames, loadConditions]);
+  }, [loadFrames, loadConditions, loadWaves, mode]);
 
   useEffect(() => {
     frames.forEach((f) => {
@@ -243,10 +310,24 @@ export default function RadarMap() {
   }, [frames]);
 
   useEffect(() => {
-    if (!playing || frames.length < 2) return;
-    const t = setInterval(() => setIdx((i) => (i + 1) % Math.max(1, frames.length)), PLAY_MS);
+    if (!playing) return;
+    if (mode === "hujan") {
+      if (frames.length < 2) return;
+      const t = setInterval(() => setIdx((i) => (i + 1) % Math.max(1, frames.length)), PLAY_MS);
+      return () => clearInterval(t);
+    }
+    // OMBAK: sweep 4 periode SEKALI lalu berhenti (forecast bukan animasi loop).
+    const t = setInterval(() => {
+      setWavePeriod((p) => {
+        if (p >= WAVE_PERIODS.length - 1) {
+          setPlaying(false);
+          return p;
+        }
+        return p + 1;
+      });
+    }, WAVE_PLAY_MS);
     return () => clearInterval(t);
-  }, [playing, frames.length]);
+  }, [playing, mode, frames.length]);
 
   useEffect(() => {
     try {
@@ -295,9 +376,59 @@ export default function RadarMap() {
     });
   }
 
+  function switchMode(next: Mode) {
+    if (next === mode) return;
+    setPlaying(false);
+    setMode(next);
+  }
+
+  // Tap area laut → fetch detail → HTML popup buat periode yg lagi dilihat.
+  const buildWavesPopup = useCallback(async (code: string): Promise<string> => {
+    try {
+      const res = await fetch(`/api/wave-area/${encodeURIComponent(code)}`, { cache: "no-store" });
+      const j = await res.json();
+      const periods: Array<{
+        wave_cat: string;
+        wave_desc: string;
+        weather: string;
+        wind_from: string;
+        wind_min: number;
+        wind_max: number;
+        warning: string | null;
+      }> = j?.periods ?? [];
+      const i = wavePeriodRef.current;
+      const p = periods[i] ?? periods[0];
+      const name = esc(String(j?.name ?? code));
+      if (!p)
+        return `<div class="wave-pop"><div class="wp-area">${name}</div><div class="wp-row">Data belum tersedia</div></div>`;
+      const label = WAVE_PERIODS[i]?.label ?? "";
+      const warn = p.warning ? `<div class="wp-warn">${esc(p.warning)}</div>` : "";
+      return `<div class="wave-pop"><div class="wp-area">${name}</div><div class="wp-period">${esc(
+        label,
+      )} · prakiraan BMKG</div><div class="wp-wave"><b>${esc(fmtWaveDesc(p.wave_desc))}</b> · ${esc(
+        p.wave_cat,
+      )}</div><div class="wp-row">${esc(p.weather)}</div><div class="wp-row">Angin dari ${esc(
+        p.wind_from,
+      )} ${p.wind_min}–${p.wind_max} kn</div>${warn}</div>`;
+    } catch {
+      return `<div class="wave-pop"><div class="wp-row">Gagal memuat detail</div></div>`;
+    }
+  }, []);
+
   const current = frames[idx];
   const isLatest = frames.length > 0 && idx === frames.length - 1;
   const ready = frames.length >= 2;
+  const periodKey = WAVE_PERIODS[wavePeriod]?.key ?? "today";
+  const periodLabel = WAVE_PERIODS[wavePeriod]?.label ?? "";
+  const waveReady = Boolean(waveData?.areas && Object.keys(waveData.areas).length);
+  // issued BMKG (UTC) → jam WIB; +7 jam DULU baru format (hindari salah tanggal di batas tengah malam)
+  const issuedWib = (() => {
+    const s = waveData?.issued;
+    const m = s ? /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(s) : null;
+    if (!m) return "";
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) + 7 * 3600 * 1000);
+    return `${String(d.getUTCHours()).padStart(2, "0")}.${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  })();
 
   return (
     <div data-theme={theme} style={{ position: "absolute", inset: 0 }}>
@@ -318,8 +449,17 @@ export default function RadarMap() {
           maxZoom={20}
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> &middot; Radar: MSS &middot; Cuaca: data.gov.sg/NEA &middot; Laut: BMKG'
         />
-        {current && (
+        {mode === "hujan" && current && (
           <ImageOverlay url={current.url} bounds={RADAR_BOUNDS} opacity={opacity} zIndex={300} />
+        )}
+        {mode === "ombak" && (
+          <WaveLayer
+            areas={waveData?.areas ?? null}
+            periodKey={periodKey}
+            opacity={waveOpacity}
+            theme={theme}
+            onPick={buildWavesPopup}
+          />
         )}
         {PLACES.map((p) => (
           <CircleMarker
@@ -373,9 +513,15 @@ export default function RadarMap() {
               Pasang
             </button>
           )}
-          <span className="live-pill" data-stale={stale ? "" : undefined}>
-            <span className="dot" /> {stale ? "Tertunda" : "Langsung"}
-          </span>
+          {mode === "ombak" ? (
+            <span className="live-pill forecast">
+              <span className="dot" /> Prakiraan
+            </span>
+          ) : (
+            <span className="live-pill" data-stale={stale ? "" : undefined}>
+              <span className="dot" /> {stale ? "Tertunda" : "Langsung"}
+            </span>
+          )}
           <button
             className="theme-toggle"
             onClick={toggleTheme}
@@ -418,13 +564,22 @@ export default function RadarMap() {
           <button className="panel-mini" onClick={() => setCollapsed(false)}>
             <span
               className="mini-dot"
-              style={{ background: isLatest && !stale ? "var(--live-dot)" : "#f59e0b" }}
+              style={{
+                background:
+                  mode === "ombak"
+                    ? "var(--text-dim)"
+                    : isLatest && !stale
+                      ? "var(--live-dot)"
+                      : "#f59e0b",
+              }}
             />
             <span className="mini-time">
-              {current ? current.time : "—"}
-              <span className="wib">WIB</span>
+              {mode === "ombak" ? periodLabel || "Ombak" : current ? current.time : "—"}
+              {mode === "hujan" && <span className="wib">WIB</span>}
             </span>
-            <span className="mini-view">{VIEWS[view].label}</span>
+            <span className="mini-view">
+              {mode === "ombak" ? `Ombak · ${VIEWS[view].label}` : VIEWS[view].label}
+            </span>
             <svg
               className="mini-chevron"
               viewBox="0 0 24 24"
@@ -442,29 +597,49 @@ export default function RadarMap() {
           <>
         <div className="panel-top">
         <div className="status">
-          <div>
-            <div className="time">
-              {current ? current.time : "—"}
-              <span className="wib">WIB</span>
-            </div>
-            <div className="date">
-              {status === "error"
-                ? "Gagal memuat radar"
-                : current
-                  ? current.date
-                  : "Memuat data…"}
-            </div>
-          </div>
-          <div className="state">
-            <span
-              className="d"
-              style={{ background: isLatest && !stale ? "var(--live-dot)" : "#f59e0b" }}
-            />
-            {isLatest ? (stale ? "Data tertunda" : "Citra terakhir") : "Putar ulang"}
-          </div>
+          {mode === "ombak" ? (
+            <>
+              <div>
+                <div className="time">{periodLabel || "Ombak"}</div>
+                <div className="date">
+                  {waveReady
+                    ? `Prakiraan gelombang BMKG${issuedWib ? ` · terbit ${issuedWib} WIB` : ""}`
+                    : "Memuat prakiraan…"}
+                </div>
+              </div>
+              <div className="state">
+                <span className="d" style={{ background: "var(--text-dim)" }} />
+                Perairan Batam
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <div className="time">
+                  {current ? current.time : "—"}
+                  <span className="wib">WIB</span>
+                </div>
+                <div className="date">
+                  {status === "error"
+                    ? "Gagal memuat radar"
+                    : current
+                      ? current.date
+                      : "Memuat data…"}
+                </div>
+              </div>
+              <div className="state">
+                <span
+                  className="d"
+                  style={{ background: isLatest && !stale ? "var(--live-dot)" : "#f59e0b" }}
+                />
+                {isLatest ? (stale ? "Data tertunda" : "Citra terakhir") : "Putar ulang"}
+              </div>
+            </>
+          )}
         </div>
 
-        {conditions &&
+        {mode === "hujan" &&
+          conditions &&
           (conditions.aq ||
             conditions.wind ||
             conditions.rain ||
@@ -561,9 +736,44 @@ export default function RadarMap() {
           </div>
         )}
 
-        {conditionsError && !conditions && (
+        {mode === "hujan" && conditionsError && !conditions && (
           <div className="conditions-err">Data cuaca tambahan lagi nggak tersedia</div>
         )}
+        </div>
+
+        <div className="mode-switch" role="tablist" aria-label="Pilih tampilan">
+          <button
+            className={`mode-btn ${mode === "hujan" ? "active" : ""}`}
+            onClick={() => switchMode("hujan")}
+            role="tab"
+            aria-selected={mode === "hujan"}
+          >
+            <svg className="mode-ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M12 2.5c3.6 4.3 6 7.6 6 10.8a6 6 0 0 1-12 0c0-3.2 2.4-6.5 6-10.8Z" />
+            </svg>
+            Hujan
+          </button>
+          <button
+            className={`mode-btn ${mode === "ombak" ? "active" : ""}`}
+            onClick={() => switchMode("ombak")}
+            role="tab"
+            aria-selected={mode === "ombak"}
+          >
+            <svg
+              className="mode-ico"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M2 8.5c1.8 0 1.8 2 3.6 2s1.8-2 3.6-2 1.8 2 3.6 2 1.8-2 3.6-2 1.8 2 3.6 2" />
+              <path d="M2 14c1.8 0 1.8 2 3.6 2s1.8-2 3.6-2 1.8 2 3.6 2 1.8-2 3.6-2 1.8 2 3.6 2" />
+            </svg>
+            Ombak
+          </button>
         </div>
 
         <div className="segmented" role="tablist" aria-label="Pilih cakupan">
@@ -585,9 +795,9 @@ export default function RadarMap() {
           <button
             className="play"
             onClick={() => setPlaying((p) => !p)}
-            disabled={!ready}
-            aria-label={playing ? "Jeda animasi" : "Putar animasi"}
-            style={{ opacity: ready ? 1 : 0.5 }}
+            disabled={mode === "hujan" ? !ready : !waveReady}
+            aria-label={playing ? "Jeda" : "Putar"}
+            style={{ opacity: (mode === "hujan" ? ready : waveReady) ? 1 : 0.5 }}
           >
             {playing ? (
               <svg viewBox="0 0 24 24" fill="currentColor">
@@ -599,46 +809,82 @@ export default function RadarMap() {
               </svg>
             )}
           </button>
-          <input
-            className="rng"
-            type="range"
-            aria-label="Penggeser waktu citra hujan"
-            min={0}
-            max={Math.max(0, frames.length - 1)}
-            value={idx}
-            disabled={!ready}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              setPlaying(false);
-              setIdx(v);
-              followRef.current = v >= frames.length - 1;
-            }}
-          />
-        </div>
-
-        <div className="meta">
-          <label className="opacity">
-            Transparansi
+          {mode === "ombak" ? (
+            <div className="period-step" role="tablist" aria-label="Periode prakiraan gelombang">
+              {WAVE_PERIODS.map((p, i) => (
+                <button
+                  key={p.key}
+                  className={`step-btn ${wavePeriod === i ? "active" : ""}`}
+                  onClick={() => {
+                    setPlaying(false);
+                    setWavePeriod(i);
+                  }}
+                  disabled={!waveReady}
+                  role="tab"
+                  aria-selected={wavePeriod === i}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          ) : (
             <input
               className="rng"
               type="range"
-              aria-label="Transparansi overlay radar"
-              min={0.3}
-              max={1}
+              aria-label="Penggeser waktu citra hujan"
+              min={0}
+              max={Math.max(0, frames.length - 1)}
+              value={idx}
+              disabled={!ready}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setPlaying(false);
+                setIdx(v);
+                followRef.current = v >= frames.length - 1;
+              }}
+            />
+          )}
+        </div>
+
+        <div className={`meta ${mode === "ombak" ? "ombak" : ""}`}>
+          <label className="opacity">
+            {mode === "ombak" ? "Tembus" : "Transparansi"}
+            <input
+              className="rng"
+              type="range"
+              aria-label={mode === "ombak" ? "Transparansi warna laut" : "Transparansi overlay radar"}
+              min={mode === "ombak" ? 0.25 : 0.3}
+              max={mode === "ombak" ? 0.7 : 1}
               step={0.05}
-              value={opacity}
-              onChange={(e) => setOpacity(Number(e.target.value))}
+              value={mode === "ombak" ? waveOpacity : opacity}
+              onChange={(e) =>
+                mode === "ombak"
+                  ? setWaveOpacity(Number(e.target.value))
+                  : setOpacity(Number(e.target.value))
+              }
             />
           </label>
-          <div className="legend">
-            <span className="lab">Ringan</span>
-            <div className="bar">
-              {LEGEND.map((c) => (
-                <span key={c} style={{ background: c }} />
+          {mode === "ombak" ? (
+            <div className="legend waves">
+              <span className="wlab">Tinggi gelombang · prakiraan BMKG</span>
+              {WAVE_CATS.map((c) => (
+                <span className="wave-chip" key={c} title={WAVE_RANGE[c]}>
+                  <span className="sw" style={{ background: WAVE_FILL[theme][c] }} />
+                  {c}
+                </span>
               ))}
             </div>
-            <span className="lab">Ekstrem</span>
-          </div>
+          ) : (
+            <div className="legend">
+              <span className="lab">Ringan</span>
+              <div className="bar">
+                {LEGEND.map((c) => (
+                  <span key={c} style={{ background: c }} />
+                ))}
+              </div>
+              <span className="lab">Ekstrem</span>
+            </div>
+          )}
         </div>
 
         <div className="credit">

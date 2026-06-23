@@ -445,6 +445,162 @@ input[type="range"].rng::-moz-range-thumb {
   text-decoration: none;
 }
 
+/* ===== mode OMBAK: toggle Hujan/Ombak + legend kategori + popup area ===== */
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--ctl-border);
+  background: var(--ctl-bg);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.25s, color 0.25s, border-color 0.25s;
+}
+.mode-btn .mode-ico {
+  width: 17px;
+  height: 17px;
+}
+.mode-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--seg-active-text);
+}
+.period-step {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+}
+.step-btn {
+  flex: 1;
+  appearance: none;
+  border: 1px solid var(--ctl-border);
+  background: var(--ctl-bg);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 10.5px;
+  padding: 8px 2px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.step-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--seg-active-text);
+}
+.step-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.meta.ombak {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 11px;
+}
+.legend.waves {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 12px;
+}
+.legend.waves .wlab {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  font-weight: 600;
+  width: 100%;
+}
+.wave-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.wave-chip .sw {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  flex: none;
+}
+.live-pill.forecast {
+  color: var(--text-muted);
+}
+.live-pill.forecast .dot {
+  background: var(--text-dim);
+  animation: none;
+}
+.wave-area {
+  cursor: pointer;
+}
+.wave-popup .leaflet-popup-content-wrapper {
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  box-shadow: var(--panel-shadow);
+  color: var(--text);
+}
+.wave-popup .leaflet-popup-content {
+  margin: 11px 13px;
+  font-family: inherit;
+}
+[data-theme="light"] .wave-popup .leaflet-popup-content-wrapper,
+[data-theme="light"] .wave-popup .leaflet-popup-tip {
+  background: #fbfbfc;
+}
+[data-theme="dark"] .wave-popup .leaflet-popup-content-wrapper,
+[data-theme="dark"] .wave-popup .leaflet-popup-tip {
+  background: #1a1c22;
+}
+.wave-popup .leaflet-popup-close-button {
+  color: var(--text-dim);
+}
+.wave-pop .wp-area {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.wave-pop .wp-period {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  font-weight: 600;
+  margin-top: 1px;
+}
+.wave-pop .wp-wave {
+  font-size: 14px;
+  color: var(--text);
+  margin: 7px 0 5px;
+}
+.wave-pop .wp-row {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.wave-pop .wp-warn {
+  font-size: 11px;
+  font-weight: 600;
+  color: #c98214;
+  margin-top: 6px;
+}
+
 /* ===== strip kondisi (kualitas udara + angin) ===== */
 .conditions {
   display: flex;
