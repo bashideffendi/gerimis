@@ -100,6 +100,17 @@ type Conditions = {
   wind: { speed: number; deg: number; label: string; station?: string } | null;
   rain: { mm: number; station: string } | null;
   uv: { value: number; label: string; color: string } | null;
+  wave: {
+    cat: string;
+    desc: string;
+    color: string;
+    weather: string;
+    windFrom: string;
+    windMin: number;
+    windMax: number;
+    warning: string | null;
+    area: string;
+  } | null;
 };
 
 type BIPEvent = Event & {
@@ -305,7 +316,7 @@ export default function RadarMap() {
           url={TILES[theme]}
           subdomains={["a", "b", "c", "d"]}
           maxZoom={20}
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> &middot; Radar: MSS &middot; Cuaca: data.gov.sg/NEA'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> &middot; Radar: MSS &middot; Cuaca: data.gov.sg/NEA &middot; Laut: BMKG'
         />
         {current && (
           <ImageOverlay url={current.url} bounds={RADAR_BOUNDS} opacity={opacity} zIndex={300} />
@@ -454,7 +465,11 @@ export default function RadarMap() {
         </div>
 
         {conditions &&
-          (conditions.aq || conditions.wind || conditions.rain || conditions.uv) && (
+          (conditions.aq ||
+            conditions.wind ||
+            conditions.rain ||
+            conditions.uv ||
+            conditions.wave) && (
           <div className="conditions">
             {conditions.rain && (
               <span
@@ -516,6 +531,31 @@ export default function RadarMap() {
                 </svg>
                 Angin <b>{conditions.wind.speed} kt</b>
                 <span className="chip-sub">dari {conditions.wind.label}</span>
+              </span>
+            )}
+            {conditions.wave && (
+              <span
+                className="chip"
+                title={`Gelombang ${conditions.wave.area} (prakiraan BMKG): ${conditions.wave.cat}, ${conditions.wave.desc}. Angin dari ${conditions.wave.windFrom} ${conditions.wave.windMin}–${conditions.wave.windMax} knot. ${conditions.wave.weather}.${
+                  conditions.wave.warning ? ` ${conditions.wave.warning}.` : ""
+                }`}
+              >
+                <svg
+                  className="wave-ico"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={conditions.wave.color}
+                  strokeWidth={1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M2 8.5c1.8 0 1.8 2 3.6 2s1.8-2 3.6-2 1.8 2 3.6 2 1.8-2 3.6-2 1.8 2 3.6 2" />
+                  <path d="M2 14c1.8 0 1.8 2 3.6 2s1.8-2 3.6-2 1.8 2 3.6 2 1.8-2 3.6-2 1.8 2 3.6 2" />
+                </svg>
+                Ombak{" "}
+                <b>{conditions.wave.desc.replace(" - ", "–").replace(/(\d)\.(\d)/g, "$1,$2")}</b>
+                <span className="chip-sub">{conditions.wave.cat}</span>
               </span>
             )}
           </div>
@@ -613,6 +653,10 @@ export default function RadarMap() {
           · Cuaca:{" "}
           <a href="https://data.gov.sg" target="_blank" rel="noopener noreferrer">
             data.gov.sg / NEA
+          </a>{" "}
+          · Laut:{" "}
+          <a href="https://maritim.bmkg.go.id" target="_blank" rel="noopener noreferrer">
+            BMKG
           </a>{" "}
           · Peta: © OpenStreetMap, CARTO · diperbarui tiap 5 menit
         </div>

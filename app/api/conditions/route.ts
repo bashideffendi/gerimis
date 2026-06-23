@@ -9,6 +9,17 @@ type Aq = { psi: number; pm25: number | null; label: string; color: string };
 type Wind = { speed: number; deg: number; label: string; station?: string };
 type Rain = { mm: number; station: string };
 type Uv = { value: number; label: string; color: string };
+type Wave = {
+  cat: string;
+  desc: string;
+  color: string;
+  weather: string;
+  windFrom: string;
+  windMin: number;
+  windMax: number;
+  warning: string | null;
+  area: string;
+};
 
 const PSI_URL = "https://api.data.gov.sg/v1/environment/psi";
 const UV_URL = "https://api.data.gov.sg/v1/environment/uv-index";
@@ -137,10 +148,76 @@ async function getUv(): Promise<Uv | null> {
   }
 }
 
+// Prakiraan gelombang laut "Perairan Kep. Batam" (kode area E.02) dari API terbuka
+// BMKG. Penetapan area oleh BMKG sendiri → confident, bukan tebakan georef. Beda dari
+// chip NEA: ini PRAKIRAAN (bukan observasi real-time), update ~2x/hari, host BMKG sendiri.
+const WAVE_URL = "https://peta-maritim.bmkg.go.id/public_api/perairan/E.02.json";
+
+// "2026-06-22 12:00 UTC" → epoch ms
+function parseBmkgUtc(s: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(s);
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : NaN;
+}
+
+// Warna ikut kategori gelombang BMKG (cek "sangat tinggi" sebelum "tinggi").
+function waveColor(cat: string): string {
+  const c = cat.toLowerCase();
+  if (c.includes("sangat tinggi")) return "#dc3545";
+  if (c.includes("ekstrem")) return "#8a1a4a";
+  if (c.includes("tinggi")) return "#e2683c";
+  if (c.includes("sedang")) return "#d99a2b";
+  return "#1aa06a"; // Tenang / Rendah
+}
+
+async function getWave(): Promise<Wave | null> {
+  try {
+    const res = await fetch(WAVE_URL, {
+      next: { revalidate: 1800 },
+      headers: { "User-Agent": "Hujan di Batam" },
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const arr: Array<Record<string, unknown>> = Array.isArray(j?.data) ? j.data : [];
+    if (!arr.length) return null;
+    const now = Date.now();
+    // Pilih periode yang mencakup SEKARANG (jangan andalkan label "Hari ini" — bisa basi
+    // saat dilihat sore). Fallback: periode terdekat ke depan, lalu entri pertama.
+    const cur =
+      arr.find((d) => {
+        const f = parseBmkgUtc(String(d.valid_from));
+        const t = parseBmkgUtc(String(d.valid_to));
+        return f <= now && now < t;
+      }) ??
+      arr.find((d) => parseBmkgUtc(String(d.valid_from)) > now) ??
+      arr[0];
+    const cat = String(cur.wave_cat ?? "");
+    if (!cat) return null;
+    return {
+      cat,
+      desc: String(cur.wave_desc ?? ""),
+      color: waveColor(cat),
+      weather: String(cur.weather ?? ""),
+      windFrom: String(cur.wind_from ?? ""),
+      windMin: Number(cur.wind_speed_min ?? 0),
+      windMax: Number(cur.wind_speed_max ?? 0),
+      warning: cur.warning_desc ? String(cur.warning_desc) : null,
+      area: String(j?.name ?? "Perairan Kep. Batam"),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
-  const [aq, wind, rain, uv] = await Promise.all([getAq(), getWind(), getRain(), getUv()]);
+  const [aq, wind, rain, uv, wave] = await Promise.all([
+    getAq(),
+    getWind(),
+    getRain(),
+    getUv(),
+    getWave(),
+  ]);
   return Response.json(
-    { aq, wind, rain, uv },
+    { aq, wind, rain, uv, wave },
     { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } },
   );
 }
