@@ -1,50 +1,47 @@
-// UJI: ambil data gelombang BMKG OFS di titik Batam via point_req.
-// (Sementara — buat lihat format respons. Nanti dilebur ke /api/conditions.)
+// UJI matriks: cari endpoint BMKG OFS yg bener buat data gelombang titik Batam.
 export const dynamic = "force-dynamic";
 
-const BASE = "https://maritim.bmkg.go.id/pusmar/api23";
+const HOST = "https://maritim.bmkg.go.id";
 const BATAM = { lat: 1.08, lon: 104.03 };
 const UA = "Mozilla/5.0 (Hujan di Batam)";
+const BR = "202606230000"; // baserun YYYYMMDDhhmm
+const DT = "202606230600"; // forecast +6h
+
+type Probe = { label: string; method: "GET" | "POST"; url: string; body?: unknown };
+
+const PROBES: Probe[] = [
+  { label: "grid-hs", method: "GET", url: `${HOST}/pusmar/api23/arr_req/inawaves/hs/${BR}/${DT}` },
+  { label: "grid-lat", method: "GET", url: `${HOST}/pusmar/api23/arr_req/inawaves/lat/${BR}/${DT}` },
+  { label: "grid-lon", method: "GET", url: `${HOST}/pusmar/api23/arr_req/inawaves/lon/${BR}/${DT}` },
+  { label: "grid-meta", method: "GET", url: `${HOST}/pusmar/api23/grid/w3g_hires` },
+  { label: "pt-api23", method: "POST", url: `${HOST}/pusmar/api23/point_req`, body: { model: "w3g_hires", modelrun: BR, lon: BATAM.lon, lat: BATAM.lat, var: ["hs"] } },
+  { label: "pt-pusmar", method: "POST", url: `${HOST}/pusmar/point_req`, body: { model: "w3g_hires", modelrun: BR, lon: BATAM.lon, lat: BATAM.lat, var: ["hs"] } },
+  { label: "pt-root", method: "POST", url: `${HOST}/point_req`, body: { model: "w3g_hires", modelrun: BR, lon: BATAM.lon, lat: BATAM.lat, var: ["hs"] } },
+  { label: "pt-iso", method: "POST", url: `${HOST}/pusmar/api23/point_req`, body: { model: "w3g_hires", modelrun: "2026-06-23T00:00:00Z", lon: BATAM.lon, lat: BATAM.lat, var: ["hs"] } },
+];
+
+async function run(p: Probe) {
+  try {
+    const res = await fetch(p.url, {
+      method: p.method,
+      cache: "no-store",
+      headers: { "User-Agent": UA, ...(p.method === "POST" ? { "Content-Type": "application/json" } : {}) },
+      ...(p.body ? { body: JSON.stringify(p.body) } : {}),
+    });
+    const text = await res.text();
+    let arrLen: number | null = null;
+    try {
+      const j = JSON.parse(text);
+      if (Array.isArray(j?.data)) arrLen = j.data.length;
+    } catch {}
+    const isHtml = text.trimStart().startsWith("<");
+    return { label: p.label, status: res.status, arrLen, sample: isHtml ? "[HTML/404]" : text.slice(0, 220) };
+  } catch (e) {
+    return { label: p.label, status: "ERR", sample: String(e).slice(0, 160) };
+  }
+}
 
 export async function GET() {
-  try {
-    const mrRes = await fetch(`${BASE}/modelrun`, {
-      cache: "no-store",
-      headers: { "User-Agent": UA },
-    });
-    const modelrun = await mrRes.json().catch(() => null);
-    const baserun = modelrun?.w3g_hires?.[0] ?? null;
-
-    const prRes = await fetch(`${BASE}/point_req`, {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({
-        model: "w3g_hires",
-        modelrun: baserun,
-        lon: BATAM.lon,
-        lat: BATAM.lat,
-        var: ["hs", "dir"],
-      }),
-    });
-    const pointText = await prRes.text();
-    let point: unknown = pointText;
-    try {
-      point = JSON.parse(pointText);
-    } catch {
-      /* biarin string */
-    }
-
-    return Response.json(
-      {
-        modelrunRaw: modelrun,
-        baserun,
-        pointReqStatus: prRes.status,
-        pointSample: typeof point === "string" ? point.slice(0, 800) : point,
-      },
-      { headers: { "Cache-Control": "no-store" } },
-    );
-  } catch (e) {
-    return Response.json({ error: String(e) }, { headers: { "Cache-Control": "no-store" } });
-  }
+  const results = await Promise.all(PROBES.map(run));
+  return Response.json({ results }, { headers: { "Cache-Control": "no-store" } });
 }
