@@ -55,15 +55,23 @@ function MapController({
   view,
   getPadding,
   collapsed,
+  mode,
 }: {
   view: ViewKey;
   getPadding: () => Padding;
   collapsed: boolean;
+  mode: Mode;
 }) {
   const map = useMap();
   const mounted = useRef(false);
   const viewRef = useRef(view);
   viewRef.current = view;
+
+  // Mode OMBAK: izinkan zoom-out lebih jauh (gak ada radar yg pecah) biar area laut
+  // jauh (Natuna/Anambas) keliatan utuh. Mode HUJAN tetap dikunci ke jangkauan radar.
+  useEffect(() => {
+    map.setMinZoom(mode === "ombak" ? 5 : MIN_ZOOM);
+  }, [mode, map]);
 
   // view berubah (+ mount): fit/terbang ke wilayah
   useEffect(() => {
@@ -474,7 +482,7 @@ export default function RadarMap() {
             </Tooltip>
           </CircleMarker>
         ))}
-        <MapController view={view} getPadding={getPadding} collapsed={collapsed} />
+        <MapController view={view} getPadding={getPadding} collapsed={collapsed} mode={mode} />
       </MapContainer>
 
       <div className="scrim-top" />
