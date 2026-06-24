@@ -15,37 +15,31 @@ import {
   LEGEND,
   MAX_ZOOM,
   MIN_ZOOM,
+  OFS_SWH_COLORS,
+  OFS_TILE,
   PLACES,
   RADAR_BOUNDS,
   TILES,
   VIEWS,
-  WAVE_CATS,
-  WAVE_FILL,
-  WAVE_PERIODS,
-  WAVE_RANGE,
+  ofsValidWib,
   timeBasedTheme,
-  wavePeriodLabel,
   type Frame,
   type Mode,
   type ThemeMode,
   type ViewKey,
 } from "@/lib/radar";
 import IosInstallHint from "./IosInstallHint";
-import WaveLayer from "./WaveLayer";
 
 const REFRESH_MS = 2 * 60 * 1000; // refetch frame & kondisi tiap 2 mnt (radar terbit tiap 5 mnt)
 const PLAY_MS = 650;
-const WAVE_PLAY_MS = 1500; // sweep periode prakiraan lebih pelan (bukan animasi badai)
+const OFS_PLAY_MS = 1100; // animasi timeline gelombang lebih pelan dari radar
 const THEME_KEY = "hujan-theme";
 const MODE_KEY = "hujan-mode";
 
-// Kategori BMKG → label/desc rapi buat popup (titik → koma, " - " → en-dash).
-function fmtWaveDesc(s: string): string {
-  return s.replace(" - ", "–").replace(/(\d)\.(\d)/g, "$1,$2");
-}
-function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-}
+// Gradien legend OFS (colormap swh resmi BMKG, 0–7 m) — string CSS dibikin sekali.
+const OFS_GRADIENT = `linear-gradient(to right, ${OFS_SWH_COLORS.map(
+  (s) => `${s.c} ${Math.round((s.m / 7) * 100)}%`,
+).join(", ")})`;
 
 type Padding = { paddingTopLeft: [number, number]; paddingBottomRight: [number, number] };
 
@@ -67,7 +61,7 @@ function MapController({
   const viewRef = useRef(view);
   viewRef.current = view;
 
-  // Mode OMBAK: izinkan zoom-out lebih jauh (gak ada radar yg pecah) biar area laut
+  // Mode OMBAK: izinkan zoom-out lebih jauh (gak ada radar yg pecah) biar field laut
   // jauh (Natuna/Anambas) keliatan utuh. Mode HUJAN tetap dikunci ke jangkauan radar.
   useEffect(() => {
     map.setMinZoom(mode === "ombak" ? 5 : MIN_ZOOM);
@@ -127,12 +121,7 @@ type Conditions = {
   uv: { value: number; label: string; color: string } | null;
 };
 
-type WaveOverview = {
-  issued: string | null;
-  periods: { key: string; from: number | null; to: number | null }[];
-  nowIndex: number;
-  areas: Record<string, Record<string, string>>;
-};
+type OfsData = { baserun: string | null; frames: string[]; nowIndex: number };
 
 type BIPEvent = Event & {
   prompt: () => Promise<void>;
@@ -159,8 +148,8 @@ export default function RadarMap() {
   const [conditionsError, setConditionsError] = useState(false);
   const [installEvt, setInstallEvt] = useState<BIPEvent | null>(null);
 
-  // Mode tampilan: HUJAN (radar) vs OMBAK (choropleth gelombang). State ombak terpisah
-  // dari radar (idx/opacity) biar balik mode posisi masing-masing tetap.
+  // Mode tampilan: HUJAN (radar) vs OMBAK (field gelombang OFS BMKG). State ombak
+  // (idx/opacity) terpisah dari radar biar balik mode posisi masing-masing tetap.
   const [mode, setMode] = useState<Mode>(() => {
     try {
       return localStorage.getItem(MODE_KEY) === "ombak" ? "ombak" : "hujan";
@@ -168,18 +157,15 @@ export default function RadarMap() {
       return "hujan";
     }
   });
-  const [wavePeriod, setWavePeriod] = useState(0);
-  const [waveOpacity, setWaveOpacity] = useState(0.55);
-  const [waveData, setWaveData] = useState<WaveOverview | null>(null);
+  const [ofs, setOfs] = useState<OfsData | null>(null);
+  const [ofsIdx, setOfsIdx] = useState(0);
+  const [waveOpacity, setWaveOpacity] = useState(0.62);
 
   const followRef = useRef(true);
   const themeOverride = useRef<ThemeMode | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const preloadedRef = useRef<Set<string>>(new Set());
-  const wavePeriodRef = useRef(0);
-  wavePeriodRef.current = wavePeriod;
-  const manualPeriodRef = useRef(false); // user scrub manual → jangan auto-realign tiap refetch
-  const nowIndexRef = useRef(0);
+  const ofsManualRef = useRef(false); // user scrub manual → jangan auto-realign tiap refetch
 
   // Padding fit dinamis: ukur tinggi panel asli (di HP panel bisa lebih tinggi karena
   // konten wrap) biar wilayah selalu ke-frame penuh DI ATAS panel, nggak ketutup.
@@ -251,26 +237,26 @@ export default function RadarMap() {
     return () => clearInterval(t);
   }, [loadConditions]);
 
-  const loadWaves = useCallback(async (resetPeriod: boolean) => {
+  const loadOfs = useCallback(async (resetIdx: boolean) => {
     try {
-      const res = await fetch("/api/wave-overview", { cache: "no-store" });
+      const res = await fetch("/api/ofs-frame", { cache: "no-store" });
       if (!res.ok) throw new Error("bad");
-      const d: WaveOverview = await res.json();
-      setWaveData(d);
-      // Realign ke periode yg nutupin jam-sekarang, KECUALI user lagi scrub manual
-      // (biar reopen PWA sesudah lewat hari nggak nampilin periode basi).
-      if ((resetPeriod || !manualPeriodRef.current) && typeof d.nowIndex === "number") {
-        setWavePeriod(Math.max(0, Math.min(WAVE_PERIODS.length - 1, d.nowIndex)));
+      const d: OfsData = await res.json();
+      setOfs(d);
+      // Buka di frame yg nutupin jam-sekarang, KECUALI user lagi scrub manual (biar
+      // reopen PWA sesudah lewat waktu nggak nyangkut di frame lama).
+      if ((resetIdx || !ofsManualRef.current) && d.frames?.length) {
+        setOfsIdx(Math.max(0, Math.min(d.frames.length - 1, d.nowIndex)));
       }
     } catch {
-      /* graceful: layer pakai warna fallback abu */
+      /* graceful: layer ombak nggak muncul */
     }
   }, []);
 
-  // Masuk mode OMBAK & belum ada data → ambil overview kategori.
+  // Masuk mode OMBAK & belum ada data → ambil frame OFS.
   useEffect(() => {
-    if (mode === "ombak" && !waveData) loadWaves(true);
-  }, [mode, waveData, loadWaves]);
+    if (mode === "ombak" && !ofs) loadOfs(true);
+  }, [mode, ofs, loadOfs]);
 
   useEffect(() => {
     try {
@@ -287,7 +273,7 @@ export default function RadarMap() {
       if (document.visibilityState === "visible") {
         loadFrames();
         loadConditions();
-        if (mode === "ombak") loadWaves(false);
+        if (mode === "ombak") loadOfs(false);
       }
     };
     const onPageShow = (e: PageTransitionEvent) => {
@@ -299,7 +285,7 @@ export default function RadarMap() {
       document.removeEventListener("visibilitychange", refetch);
       window.removeEventListener("pageshow", onPageShow);
     };
-  }, [loadFrames, loadConditions, loadWaves, mode]);
+  }, [loadFrames, loadConditions, loadOfs, mode]);
 
   useEffect(() => {
     frames.forEach((f) => {
@@ -310,6 +296,7 @@ export default function RadarMap() {
     });
   }, [frames]);
 
+  const ofsCount = ofs?.frames.length ?? 0;
   useEffect(() => {
     if (!playing) return;
     if (mode === "hujan") {
@@ -317,18 +304,20 @@ export default function RadarMap() {
       const t = setInterval(() => setIdx((i) => (i + 1) % Math.max(1, frames.length)), PLAY_MS);
       return () => clearInterval(t);
     }
-    // OMBAK: sweep 4 periode SEKALI lalu berhenti (forecast bukan animasi loop).
+    // OMBAK: sweep timeline forecast SEKALI lalu berhenti (tile reload tiap step,
+    // jangan loop biar gak terus-terusan narik tile).
+    if (ofsCount < 2) return;
     const t = setInterval(() => {
-      setWavePeriod((p) => {
-        if (p >= WAVE_PERIODS.length - 1) {
+      setOfsIdx((i) => {
+        if (i >= ofsCount - 1) {
           setPlaying(false);
-          return p;
+          return i;
         }
-        return p + 1;
+        return i + 1;
       });
-    }, WAVE_PLAY_MS);
+    }, OFS_PLAY_MS);
     return () => clearInterval(t);
-  }, [playing, mode, frames.length]);
+  }, [playing, mode, frames.length, ofsCount]);
 
   useEffect(() => {
     try {
@@ -381,63 +370,21 @@ export default function RadarMap() {
     if (next === mode) return;
     setPlaying(false);
     if (next === "hujan") {
-      manualPeriodRef.current = false; // keluar ombak → boleh auto-realign periode lagi
+      ofsManualRef.current = false; // keluar ombak → boleh auto-realign frame lagi
       if (view === "natuna") setView("regional"); // view "Natuna" cuma valid di mode ombak
     }
     setMode(next);
   }
 
-  // Tap area laut → fetch detail → HTML popup buat periode yg lagi dilihat.
-  const buildWavesPopup = useCallback(async (code: string): Promise<string> => {
-    try {
-      const res = await fetch(`/api/wave-area/${encodeURIComponent(code)}`, { cache: "no-store" });
-      const j = await res.json();
-      const periods: Array<{
-        wave_cat: string;
-        wave_desc: string;
-        weather: string;
-        wind_from: string;
-        wind_min: number;
-        wind_max: number;
-        warning: string | null;
-      }> = j?.periods ?? [];
-      const i = wavePeriodRef.current;
-      const p = periods[i] ?? periods[0];
-      const name = esc(String(j?.name ?? code));
-      if (!p)
-        return `<div class="wave-pop"><div class="wp-area">${name}</div><div class="wp-row">Data belum tersedia</div></div>`;
-      const label = wavePeriodLabel(i, nowIndexRef.current);
-      const warn = p.warning ? `<div class="wp-warn">${esc(p.warning)}</div>` : "";
-      return `<div class="wave-pop"><div class="wp-area">${name}</div><div class="wp-period">${esc(
-        label,
-      )} · prakiraan BMKG</div><div class="wp-wave"><b>${esc(fmtWaveDesc(p.wave_desc))}</b> · ${esc(
-        p.wave_cat,
-      )}</div><div class="wp-row">${esc(p.weather)}</div><div class="wp-row">Angin dari ${esc(
-        p.wind_from,
-      )} ${p.wind_min}–${p.wind_max} kn</div>${warn}</div>`;
-    } catch {
-      return `<div class="wave-pop"><div class="wp-row">Gagal memuat detail</div></div>`;
-    }
-  }, []);
-
   const current = frames[idx];
   const isLatest = frames.length > 0 && idx === frames.length - 1;
   const ready = frames.length >= 2;
-  const periodKey = WAVE_PERIODS[wavePeriod]?.key ?? "today";
-  const nowIndex = waveData?.nowIndex ?? 0;
-  nowIndexRef.current = nowIndex;
-  const periodLabel = wavePeriodLabel(wavePeriod, nowIndex);
   const viewKeys: ViewKey[] =
     mode === "ombak" ? ["batam", "regional", "kepri", "natuna"] : ["batam", "regional", "kepri"];
-  const waveReady = Boolean(waveData?.areas && Object.keys(waveData.areas).length);
-  // issued BMKG (UTC) → jam WIB; +7 jam DULU baru format (hindari salah tanggal di batas tengah malam)
-  const issuedWib = (() => {
-    const s = waveData?.issued;
-    const m = s ? /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(s) : null;
-    if (!m) return "";
-    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) + 7 * 3600 * 1000);
-    return `${String(d.getUTCHours()).padStart(2, "0")}.${String(d.getUTCMinutes()).padStart(2, "0")}`;
-  })();
+  const ofsReady = ofsCount > 0;
+  const ofsValid = ofs?.frames[ofsIdx];
+  const ofsWib = ofsValid ? ofsValidWib(ofsValid) : null;
+  const ofsIsNow = ofsReady && ofsIdx === (ofs?.nowIndex ?? 0);
 
   return (
     <div data-theme={theme} style={{ position: "absolute", inset: 0 }}>
@@ -461,13 +408,14 @@ export default function RadarMap() {
         {mode === "hujan" && current && (
           <ImageOverlay url={current.url} bounds={RADAR_BOUNDS} opacity={opacity} zIndex={300} />
         )}
-        {mode === "ombak" && (
-          <WaveLayer
-            areas={waveData?.areas ?? null}
-            periodKey={periodKey}
+        {mode === "ombak" && ofs?.baserun && ofsValid && (
+          <TileLayer
+            url={OFS_TILE(ofs.baserun, ofsValid)}
+            tms
             opacity={waveOpacity}
-            theme={theme}
-            onPick={buildWavesPopup}
+            zIndex={250}
+            maxNativeZoom={8}
+            maxZoom={20}
           />
         )}
         {PLACES.map((p) => (
@@ -583,8 +531,8 @@ export default function RadarMap() {
               }}
             />
             <span className="mini-time">
-              {mode === "ombak" ? periodLabel || "Ombak" : current ? current.time : "—"}
-              {mode === "hujan" && <span className="wib">WIB</span>}
+              {mode === "ombak" ? (ofsWib ? ofsWib.time : "—") : current ? current.time : "—"}
+              <span className="wib">WIB</span>
             </span>
             <span className="mini-view">
               {mode === "ombak" ? `Ombak · ${VIEWS[view].label}` : VIEWS[view].label}
@@ -609,16 +557,19 @@ export default function RadarMap() {
           {mode === "ombak" ? (
             <>
               <div>
-                <div className="time">{periodLabel || "Ombak"}</div>
+                <div className="time">
+                  {ofsWib ? ofsWib.time : "—"}
+                  <span className="wib">WIB</span>
+                </div>
                 <div className="date">
-                  {waveReady
-                    ? `Prakiraan gelombang BMKG${issuedWib ? ` · terbit ${issuedWib} WIB` : ""}`
+                  {ofsReady
+                    ? `Gelombang BMKG${ofsWib ? ` · ${ofsWib.date}` : ""}`
                     : "Memuat prakiraan…"}
                 </div>
               </div>
               <div className="state">
                 <span className="d" style={{ background: "var(--text-dim)" }} />
-                Perairan Batam
+                {ofsIsNow ? "Sekarang" : "Prakiraan"}
               </div>
             </>
           ) : (
@@ -778,20 +729,14 @@ export default function RadarMap() {
             className="play"
             onClick={() =>
               setPlaying((p) => {
-                // mulai sweep dari periode-sekarang kalau lagi mentok di periode terakhir
-                if (!p && mode === "ombak" && wavePeriod >= WAVE_PERIODS.length - 1)
-                  setWavePeriod(nowIndex);
+                // mulai sweep dari frame-sekarang kalau lagi mentok di akhir
+                if (!p && mode === "ombak" && ofsIdx >= ofsCount - 1) setOfsIdx(ofs?.nowIndex ?? 0);
                 return !p;
               })
             }
-            disabled={mode === "hujan" ? !ready : !waveReady || nowIndex >= WAVE_PERIODS.length - 1}
+            disabled={mode === "hujan" ? !ready : !ofsReady}
             aria-label={playing ? "Jeda" : "Putar"}
-            style={{
-              opacity:
-                (mode === "hujan" ? ready : waveReady && nowIndex < WAVE_PERIODS.length - 1)
-                  ? 1
-                  : 0.5,
-            }}
+            style={{ opacity: (mode === "hujan" ? ready : ofsReady) ? 1 : 0.5 }}
           >
             {playing ? (
               <svg viewBox="0 0 24 24" fill="currentColor">
@@ -803,55 +748,37 @@ export default function RadarMap() {
               </svg>
             )}
           </button>
-          {mode === "ombak" ? (
-            <div className="period-step" role="group" aria-label="Periode prakiraan gelombang">
-              {WAVE_PERIODS.slice(nowIndex).map((p, j) => {
-                const i = nowIndex + j; // cuma periode sekarang→depan (yg lewat disembunyiin)
-                return (
-                  <button
-                    key={p.key}
-                    className={`step-btn ${wavePeriod === i ? "active" : ""}`}
-                    onClick={() => {
-                      setPlaying(false);
-                      manualPeriodRef.current = true; // scrub manual → tahan auto-realign
-                      setWavePeriod(i);
-                    }}
-                    disabled={!waveReady}
-                    aria-pressed={wavePeriod === i}
-                  >
-                    {wavePeriodLabel(i, nowIndex)}
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <input
-              className="rng"
-              type="range"
-              aria-label="Penggeser waktu citra hujan"
-              min={0}
-              max={Math.max(0, frames.length - 1)}
-              value={idx}
-              disabled={!ready}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setPlaying(false);
+          <input
+            className="rng"
+            type="range"
+            aria-label={mode === "ombak" ? "Waktu prakiraan gelombang" : "Penggeser waktu citra hujan"}
+            min={0}
+            max={mode === "ombak" ? Math.max(0, ofsCount - 1) : Math.max(0, frames.length - 1)}
+            value={mode === "ombak" ? ofsIdx : idx}
+            disabled={mode === "ombak" ? !ofsReady : !ready}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setPlaying(false);
+              if (mode === "ombak") {
+                ofsManualRef.current = true;
+                setOfsIdx(v);
+              } else {
                 setIdx(v);
                 followRef.current = v >= frames.length - 1;
-              }}
-            />
-          )}
+              }
+            }}
+          />
         </div>
 
-        <div className={`meta ${mode === "ombak" ? "ombak" : ""}`}>
+        <div className="meta">
           <label className="opacity">
             {mode === "ombak" ? "Tembus" : "Transparansi"}
             <input
               className="rng"
               type="range"
-              aria-label={mode === "ombak" ? "Transparansi warna laut" : "Transparansi overlay radar"}
-              min={mode === "ombak" ? 0.25 : 0.3}
-              max={mode === "ombak" ? 0.7 : 1}
+              aria-label={mode === "ombak" ? "Transparansi field gelombang" : "Transparansi overlay radar"}
+              min={mode === "ombak" ? 0.3 : 0.3}
+              max={mode === "ombak" ? 0.9 : 1}
               step={0.05}
               value={mode === "ombak" ? waveOpacity : opacity}
               onChange={(e) =>
@@ -862,14 +789,10 @@ export default function RadarMap() {
             />
           </label>
           {mode === "ombak" ? (
-            <div className="legend waves">
-              <span className="wlab">Tinggi gelombang · prakiraan BMKG</span>
-              {WAVE_CATS.map((c) => (
-                <span className="wave-chip" key={c} title={WAVE_RANGE[c]}>
-                  <span className="sw" style={{ background: WAVE_FILL[theme][c] }} />
-                  {c}
-                </span>
-              ))}
+            <div className="legend">
+              <span className="lab">Tenang</span>
+              <div className="bar" style={{ background: OFS_GRADIENT }} />
+              <span className="lab">Ekstrem</span>
             </div>
           ) : (
             <div className="legend">
@@ -899,9 +822,9 @@ export default function RadarMap() {
           </a>{" "}
           · Laut:{" "}
           <a href="https://maritim.bmkg.go.id" target="_blank" rel="noopener noreferrer">
-            BMKG
+            BMKG OFS
           </a>{" "}
-          · Peta: © OpenStreetMap, CARTO · diperbarui tiap 5 menit
+          · Peta: © OpenStreetMap, CARTO
         </div>
           </>
         )}

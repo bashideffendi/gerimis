@@ -91,77 +91,36 @@ export function timeBasedTheme(): ThemeMode {
   return wibHour >= 6 && wibHour < 18 ? "light" : "dark";
 }
 
-// ---------------------------------------------------------------------------
-// Mode OMBAK: choropleth gelombang per-area perairan BMKG (toggle HUJAN/OMBAK).
-// ---------------------------------------------------------------------------
+// Mode tampilan: HUJAN (radar) vs OMBAK (field gelombang OFS BMKG).
 export type Mode = "hujan" | "ombak";
 
-// 4 periode prakiraan BMKG (key overview gelombang.json → label tampil).
-export const WAVE_PERIODS = [
-  { key: "today", label: "Hari ini" },
-  { key: "tomorrow", label: "Besok" },
-  { key: "h2", label: "Lusa" },
-  { key: "h3", label: "3 hari lagi" },
-] as const;
+// ---------------------------------------------------------------------------
+// OFS BMKG: field gelombang KONTINU (WAVEWATCH III hi-res "w3g_hires", param swh =
+// significant wave height) sebagai TMS tile pre-colored → mulus, nol-lubang.
+// ---------------------------------------------------------------------------
+// TMS tile (y-flip!) — host peta-maritim, path api21, pre-colored contourf.
+export const OFS_TILE = (baserun: string, valid: string) =>
+  `https://peta-maritim.bmkg.go.id/api21/mpl_req/w3g_hires/swh/0/${baserun}/${valid}/{z}/{x}/{y}.png?ci=1&overlays=,contourf&conc=snow`;
 
-// 7 kategori tinggi gelombang BMKG (urut rendah → ekstrem) + rentang meter.
-export const WAVE_CATS = [
-  "Tenang", "Rendah", "Sedang", "Tinggi", "Sangat Tinggi", "Ekstrem", "Sangat Ekstrem",
-] as const;
+// Colormap swh resmi BMKG (14 stop, ambang-bawah meter → warna) — buat legend gradien.
+export const OFS_SWH_COLORS: { m: number; c: string }[] = [
+  { m: 0, c: "#075de6" }, { m: 0.5, c: "#3175bc" }, { m: 0.75, c: "#5bbee7" },
+  { m: 1, c: "#01fbbc" }, { m: 1.25, c: "#01d743" }, { m: 1.5, c: "#fffb52" },
+  { m: 2, c: "#ffab31" }, { m: 2.5, c: "#ff7d29" }, { m: 3, c: "#9c4510" },
+  { m: 3.5, c: "#e7453a" }, { m: 4, c: "#c72c32" }, { m: 5, c: "#e734c6" },
+  { m: 6, c: "#b5349b" }, { m: 7, c: "#691d77" },
+];
 
-export const WAVE_RANGE: Record<string, string> = {
-  Tenang: "0–0,5 m",
-  Rendah: "0,5–1,25 m",
-  Sedang: "1,25–2,5 m",
-  Tinggi: "2,5–4 m",
-  "Sangat Tinggi": "4–6 m",
-  Ekstrem: "6–9 m",
-  "Sangat Ekstrem": ">9 m",
-};
-
-// Warna isi per tema. Light = di atas basemap terang; dark = LEBIH terang biar
-// kategori parah tetap kebaca di basemap near-black (Dark Matter), bukan tenggelam.
-export const WAVE_FILL: Record<ThemeMode, Record<string, string>> = {
-  light: {
-    Tenang: "#5dcaa5", Rendah: "#97c459", Sedang: "#efb528", Tinggi: "#e8852f",
-    "Sangat Tinggi": "#dc3545", Ekstrem: "#a31d52", "Sangat Ekstrem": "#6a0f3a",
-  },
-  dark: {
-    Tenang: "#4fc3a0", Rendah: "#9ed158", Sedang: "#f2bf3f", Tinggi: "#f08a44",
-    "Sangat Tinggi": "#ee5566", Ekstrem: "#d4548a", "Sangat Ekstrem": "#b85ba0",
-  },
-};
-export const WAVE_FILL_FALLBACK = "#94a3b8"; // area tak terjoin → abu, tetap render
-
-// Garis batas area: hairline gelap di tema terang, terang di tema gelap, biar area
-// bersebelahan warna mirip tetap kepisah (cue non-warna, bukan andalkan fill doang).
-export const WAVE_BORDER: Record<ThemeMode, string> = {
-  light: "rgba(20, 24, 33, 0.42)",
-  dark: "rgba(255, 255, 255, 0.46)",
-};
-
-// Label periode RELATIF ke periode yg nutupin jam-sekarang (nowIndex). Penting: key
-// overview (today/tomorrow/…) itu relatif WAKTU TERBIT BMKG, bukan tanggal absolut —
-// jadi periode di nowIndex HARUS dibaca "Hari ini" (offset 0), bukan label tetap.
-export function wavePeriodLabel(index: number, nowIndex: number): string {
-  const o = index - nowIndex;
-  if (o === 0) return "Hari ini";
-  if (o === 1) return "Besok";
-  if (o === 2) return "Lusa";
-  if (o === -1) return "Kemarin";
-  if (o < 0) return `${-o} hari lalu`;
-  return `${o} hari`;
-}
-
-// Normalisasi string kategori BMKG → key kanonik (cek "sangat …" SEBELUM yg polos).
-export function normCat(s: string): string | null {
-  const c = (s || "").toLowerCase().trim();
-  if (c.includes("sangat ekstrem")) return "Sangat Ekstrem";
-  if (c.includes("ekstrem")) return "Ekstrem";
-  if (c.includes("sangat tinggi")) return "Sangat Tinggi";
-  if (c.includes("tinggi")) return "Tinggi";
-  if (c.includes("sedang")) return "Sedang";
-  if (c.includes("rendah")) return "Rendah";
-  if (c.includes("tenang")) return "Tenang";
-  return null;
+const HARI = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+// "202606241500" (UTC) → { time:"22.00", date:"Rab, 24 Jun" } WIB (+7 jam).
+export function ofsValidWib(valid: string): { time: string; date: string } {
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(valid);
+  if (!m) return { time: "—", date: "" };
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) + 7 * 3600 * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return {
+    time: `${p(d.getUTCHours())}.${p(d.getUTCMinutes())}`,
+    date: `${HARI[d.getUTCDay()]}, ${d.getUTCDate()} ${BULAN[d.getUTCMonth()]}`,
+  };
 }
