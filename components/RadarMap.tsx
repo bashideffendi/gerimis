@@ -6,7 +6,6 @@ import {
   CircleMarker,
   ImageOverlay,
   MapContainer,
-  Pane,
   TileLayer,
   Tooltip,
   useMap,
@@ -30,7 +29,6 @@ import {
   type ViewKey,
 } from "@/lib/radar";
 import IosInstallHint from "./IosInstallHint";
-import LandMask from "./LandMask";
 
 const REFRESH_MS = 2 * 60 * 1000; // refetch frame & kondisi tiap 2 mnt (radar terbit tiap 5 mnt)
 const PLAY_MS = 650;
@@ -161,7 +159,7 @@ export default function RadarMap() {
   });
   const [ofs, setOfs] = useState<OfsData | null>(null);
   const [ofsIdx, setOfsIdx] = useState(0);
-  const [waveOpacity, setWaveOpacity] = useState(0.62);
+  const [waveOpacity, setWaveOpacity] = useState(0.55);
 
   const followRef = useRef(true);
   const themeOverride = useRef<ThemeMode | null>(null);
@@ -410,6 +408,9 @@ export default function RadarMap() {
         {mode === "hujan" && current && (
           <ImageOverlay url={current.url} bounds={RADAR_BOUNDS} opacity={opacity} zIndex={300} />
         )}
+        {/* Field gelombang OFS sbg lapisan tembus DI ATAS peta asli (gaya Windy/Zoom Earth):
+            peta asli utuh keliatan, laut keisi field. Land-mask knockout gak feasible di
+            CSS (destination-out bukan mix-blend-mode), + mask numpuk = tabrakan coastline. */}
         {mode === "ombak" && ofs?.baserun && ofsValid && (
           <TileLayer
             url={OFS_TILE(ofs.baserun, ofsValid)}
@@ -419,20 +420,6 @@ export default function RadarMap() {
             maxNativeZoom={8}
             maxZoom={20}
           />
-        )}
-        {/* Mask daratan di atas field OFS (field opaque nutup darat — laut tetap tembus) */}
-        {mode === "ombak" && <LandMask theme={theme} />}
-        {/* Label-only di atas mask: balikin nama kota/negara yg ketutup mask+field */}
-        {mode === "ombak" && (
-          <Pane name="ombak-labels" style={{ zIndex: 270, pointerEvents: "none" }}>
-            <TileLayer
-              url={`https://{s}.basemaps.cartocdn.com/${
-                theme === "dark" ? "dark_only_labels" : "light_only_labels"
-              }/{z}/{x}/{y}{r}.png`}
-              subdomains={["a", "b", "c", "d"]}
-              maxZoom={20}
-            />
-          </Pane>
         )}
         {PLACES.map((p) => (
           <CircleMarker
