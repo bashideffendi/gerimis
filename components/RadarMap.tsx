@@ -6,6 +6,7 @@ import {
   CircleMarker,
   ImageOverlay,
   MapContainer,
+  Pane,
   TileLayer,
   Tooltip,
   useMap,
@@ -29,6 +30,7 @@ import {
   type ViewKey,
 } from "@/lib/radar";
 import IosInstallHint from "./IosInstallHint";
+import LandMask from "./LandMask";
 
 const REFRESH_MS = 2 * 60 * 1000; // refetch frame & kondisi tiap 2 mnt (radar terbit tiap 5 mnt)
 const PLAY_MS = 650;
@@ -417,6 +419,20 @@ export default function RadarMap() {
             maxNativeZoom={8}
             maxZoom={20}
           />
+        )}
+        {/* Mask daratan di atas field OFS (field opaque nutup darat — laut tetap tembus) */}
+        {mode === "ombak" && <LandMask theme={theme} />}
+        {/* Label-only di atas mask: balikin nama kota/negara yg ketutup mask+field */}
+        {mode === "ombak" && (
+          <Pane name="ombak-labels" style={{ zIndex: 270, pointerEvents: "none" }}>
+            <TileLayer
+              url={`https://{s}.basemaps.cartocdn.com/${
+                theme === "dark" ? "dark_only_labels" : "light_only_labels"
+              }/{z}/{x}/{y}{r}.png`}
+              subdomains={["a", "b", "c", "d"]}
+              maxZoom={20}
+            />
+          </Pane>
         )}
         {PLACES.map((p) => (
           <CircleMarker
