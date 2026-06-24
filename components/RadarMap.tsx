@@ -117,17 +117,6 @@ type Conditions = {
   wind: { speed: number; deg: number; label: string; station?: string } | null;
   rain: { mm: number; station: string } | null;
   uv: { value: number; label: string; color: string } | null;
-  wave: {
-    cat: string;
-    desc: string;
-    color: string;
-    weather: string;
-    windFrom: string;
-    windMin: number;
-    windMax: number;
-    warning: string | null;
-    area: string;
-  } | null;
 };
 
 type WaveOverview = {
@@ -652,11 +641,7 @@ export default function RadarMap() {
 
         {mode === "hujan" &&
           conditions &&
-          (conditions.aq ||
-            conditions.wind ||
-            conditions.rain ||
-            conditions.uv ||
-            conditions.wave) && (
+          (conditions.aq || conditions.wind || conditions.rain || conditions.uv) && (
           <div className="conditions">
             {conditions.rain && (
               <span
@@ -718,30 +703,6 @@ export default function RadarMap() {
                 </svg>
                 Angin <b>{conditions.wind.speed} kt</b>
                 <span className="chip-sub">dari {conditions.wind.label}</span>
-              </span>
-            )}
-            {conditions.wave && (
-              <span
-                className="chip"
-                title={`Gelombang ${conditions.wave.area} (prakiraan BMKG): ${conditions.wave.cat}, ${fmtWaveDesc(conditions.wave.desc)}. Angin dari ${conditions.wave.windFrom} ${conditions.wave.windMin}–${conditions.wave.windMax} knot. ${conditions.wave.weather}.${
-                  conditions.wave.warning ? ` ${conditions.wave.warning}.` : ""
-                }`}
-              >
-                <svg
-                  className="wave-ico"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={conditions.wave.color}
-                  strokeWidth={1.8}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M2 8.5c1.8 0 1.8 2 3.6 2s1.8-2 3.6-2 1.8 2 3.6 2 1.8-2 3.6-2 1.8 2 3.6 2" />
-                  <path d="M2 14c1.8 0 1.8 2 3.6 2s1.8-2 3.6-2 1.8 2 3.6 2 1.8-2 3.6-2 1.8 2 3.6 2" />
-                </svg>
-                Ombak <b>{fmtWaveDesc(conditions.wave.desc)}</b>
-                <span className="chip-sub">{conditions.wave.cat}</span>
               </span>
             )}
           </div>

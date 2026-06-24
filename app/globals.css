@@ -654,10 +654,6 @@ input[type="range"].rng::-moz-range-thumb {
   width: 13px;
   height: 13px;
 }
-.chip .wave-ico {
-  width: 15px;
-  height: 15px;
-}
 
 /* ===== panel: grab handle + collapse (bottom-sheet) ===== */
 .panel[data-collapsed="true"] {
