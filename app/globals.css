@@ -10,7 +10,7 @@
   --panel-shadow: 0 22px 60px rgba(25, 35, 65, 0.15);
   --text: #15171c;
   --text-muted: #5b616e;
-  --text-dim: #9aa0ab;
+  --text-dim: #717784;
   --accent: #2f6fb3;
   --accent-soft: rgba(47, 111, 179, 0.16);
   --wordmark: #15171c;
@@ -46,7 +46,7 @@
   --panel-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
   --text: #f2f3f5;
   --text-muted: rgba(255, 255, 255, 0.56);
-  --text-dim: rgba(255, 255, 255, 0.4);
+  --text-dim: rgba(255, 255, 255, 0.62);
   --accent: #6ea2dd;
   --accent-soft: rgba(110, 162, 221, 0.16);
   --wordmark: #f2f3f5;
@@ -654,7 +654,7 @@ input[type="range"].rng::-moz-range-thumb {
 
 /* ===== status tertunda (stale) ===== */
 .live-pill[data-stale] {
-  color: #c98214;
+  color: #9a5b00; /* AA di pill 9.5px (#c98214 cuma ~3:1) */
   border-color: rgba(217, 154, 43, 0.4);
 }
 .live-pill[data-stale] .dot {
@@ -790,6 +790,10 @@ input[type="range"].rng::-moz-range-thumb {
   .seg-btn {
     font-size: 11px;
     padding: 7px 4px 8px;
+    min-height: 44px;
+  }
+  .mode-btn {
+    height: 44px;
   }
   .transport {
     gap: 11px;
@@ -820,6 +824,17 @@ input[type="range"].rng::-moz-range-thumb {
   input[type="range"].rng::-webkit-slider-thumb {
     width: 22px;
     height: 22px;
+  }
+}
+
+/* ===== hormati prefers-reduced-motion (a11y + ringanin GPU Iris Xe) ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }
 

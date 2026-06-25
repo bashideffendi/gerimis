@@ -30,8 +30,6 @@ export const RADAR_BOUNDS: [[number, number], [number, number]] = [
   [3.36, 105.95], // NE (lat_max, lng_max)
 ];
 
-// Batas geser peta supaya nggak nyasar keluar jangkauan radar.
-export const MAX_BOUNDS: [[number, number], [number, number]] = RADAR_BOUNDS;
 export const MIN_ZOOM = 7;
 export const MAX_ZOOM = 12; // dikunci: lebih dari ini radar (1 km/px) mulai pecah
 
@@ -52,13 +50,6 @@ export const VIEWS: Record<
   natuna: { label: "Natuna", sub: "laut lepas", bounds: [[-1.4, 102.6], [4.8, 108.2]] },
 };
 export const DEFAULT_VIEW: ViewKey = "batam";
-
-// Sisihkan ruang buat chrome saat fit: atas = topbar, bawah = panel kontrol.
-// Format Leaflet Point [x, y] (px).
-export const VIEW_PADDING = {
-  paddingTopLeft: [14, 76] as [number, number],
-  paddingBottomRight: [14, 238] as [number, number],
-};
 
 // Basemap per tema (CARTO) — minimalis biar radar pop & kesan elegant.
 export const TILES: Record<ThemeMode, string> = {

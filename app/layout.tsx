@@ -47,7 +47,8 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // maximumScale sengaja TIDAK dikunci — pinch-zoom halaman dibiarkan (WCAG 1.4.4);
+  // Leaflet handle zoom area peta sendiri, jadi pinch di luar peta zoom browser normal.
 };
 
 export default function RootLayout({

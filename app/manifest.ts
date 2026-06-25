@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
 
-// PWA-lite: cukup biar bisa "Add to Home Screen" + ikon rapi.
-// SENGAJA tanpa service worker — radar itu data real-time, caching malah bikin basi.
+// PWA: manifest buat "Add to Home Screen" + ikon. SW minimal ADA (public/sw.js,
+// didaftar via ServiceWorkerRegister): data real-time = network-only ANTI-BASI,
+// shell statis content-hashed = cache-first.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Hujan di Batam — Radar Hujan Real-time",

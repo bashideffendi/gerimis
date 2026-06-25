@@ -259,6 +259,14 @@ export default function RadarMap() {
     if (mode === "ombak" && !ofs) loadOfs(true);
   }, [mode, ofs, loadOfs]);
 
+  // Mode OMBAK: refresh frame OFS berkala biar baserun & "Sekarang" gak beku selama
+  // tab kebuka (sejajar radar/kondisi). loadOfs(false) hormati scrub manual user.
+  useEffect(() => {
+    if (mode !== "ombak") return;
+    const t = setInterval(() => loadOfs(false), REFRESH_MS);
+    return () => clearInterval(t);
+  }, [mode, loadOfs]);
+
   useEffect(() => {
     try {
       localStorage.setItem(MODE_KEY, mode);
@@ -270,20 +278,23 @@ export default function RadarMap() {
   // App balik kelihatan (reopen PWA / balik ke tab / restore dari bfcache) -> fetch
   // ulang. Penting buat PWA standalone yang nggak punya tombol refresh.
   useEffect(() => {
-    const refetch = () => {
-      if (document.visibilityState === "visible") {
-        loadFrames();
-        loadConditions();
-        if (mode === "ombak") loadOfs(false);
+    const refetch = (resetOfs: boolean) => {
+      if (document.visibilityState !== "visible") return;
+      loadFrames();
+      loadConditions();
+      if (mode === "ombak") {
+        if (resetOfs) ofsManualRef.current = false; // reopen → realign ke "sekarang"
+        loadOfs(false);
       }
     };
+    const onVis = () => refetch(false); // tab switch biasa: hormati scrub manual
     const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) refetch();
+      if (e.persisted) refetch(true); // restore bfcache = reopen: balik ke "sekarang"
     };
-    document.addEventListener("visibilitychange", refetch);
+    document.addEventListener("visibilitychange", onVis);
     window.addEventListener("pageshow", onPageShow);
     return () => {
-      document.removeEventListener("visibilitychange", refetch);
+      document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pageshow", onPageShow);
     };
   }, [loadFrames, loadConditions, loadOfs, mode]);
@@ -404,10 +415,16 @@ export default function RadarMap() {
           url={TILES[theme]}
           subdomains={["a", "b", "c", "d"]}
           maxZoom={20}
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> &middot; Radar: MSS &middot; Cuaca: data.gov.sg/NEA &middot; Laut: BMKG'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'
         />
         {mode === "hujan" && current && (
-          <ImageOverlay url={current.url} bounds={RADAR_BOUNDS} opacity={opacity} zIndex={300} />
+          <ImageOverlay
+            url={current.url}
+            bounds={RADAR_BOUNDS}
+            opacity={opacity}
+            zIndex={300}
+            attribution="Radar: Meteorological Service Singapore"
+          />
         )}
         {/* Field gelombang OFS (TMS tile contourf BMKG) di atas basemap */}
         {mode === "ombak" && ofs?.baserun && ofsValid && (
@@ -418,6 +435,7 @@ export default function RadarMap() {
             zIndex={250}
             maxNativeZoom={8}
             maxZoom={20}
+            attribution="Gelombang: BMKG OFS"
           />
         )}
         {/* Mask daratan (fill = warna land basemap) di atas field → darat nol-tint, laut field */}

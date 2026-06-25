@@ -30,6 +30,7 @@ export default function LandMask({ theme }: { theme: ThemeMode }) {
       {
         pane: "landmask",
         interactive: false,
+        attribution: "Daratan: &copy; OpenStreetMap (via CircleGeo)",
         maxNativeZoom: 10,
         minZoom: 0,
         maxZoom: 20,
